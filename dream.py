@@ -1038,7 +1038,7 @@ async def cb_interpret(call: CallbackQuery):
     parts = call.data.split(":")
     action = parts[1] if len(parts) > 1 else ""
     if action == "set_mode":
-        # ask to choose default mode via inline again or suggest /mode
+     
         if lang == "uk":
             txt = "Використай /mode Mixed | Psychological | Custom — щоб встановити режим за замовчуванням."
         elif lang == "ru":
@@ -1047,7 +1047,7 @@ async def cb_interpret(call: CallbackQuery):
             txt = "Use /mode Mixed | Psychological | Custom to set the default mode."
         await call.message.answer(txt)
     else:
-        # guide to send a dream now; analysis uses saved default mode
+     
         if lang == "uk":
             txt = "Надішли текст сну одним повідомленням — я проаналізую. Щоб зберегти режим, скористайся /mode."
         elif lang == "ru":
@@ -1086,7 +1086,7 @@ async def cb_diary(call: CallbackQuery):
     action = call.data.split(":", 1)[1]
     user_id = get_or_create_user(call.from_user.id, call.from_user.username, lang)
     if action == "history":
-        # reuse logic from /history
+     
         conn = db_conn()
         cur = conn.cursor()
         cur.execute(
@@ -1156,7 +1156,7 @@ async def cb_settings(call: CallbackQuery):
         set_notifications(call.from_user.id, 0)
         await call.message.answer("Notifications OFF" if lang == "en" else ("Уведомления выключены" if lang == "ru" else "Сповіщення вимкнено"))
     elif action == "mode":
-        # Suggest using /mode to persist
+ 
         if lang == "uk":
             await call.message.answer("Використай команду /mode Mixed | Psychological | Custom")
         elif lang == "ru":
