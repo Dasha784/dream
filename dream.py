@@ -49,6 +49,10 @@ def db_migrate() -> None:
             username TEXT,
             language TEXT,
             premium INTEGER DEFAULT 0,
+            default_mode TEXT DEFAULT 'Mixed',
+            notifications_enabled INTEGER DEFAULT 0,
+            daily_hour INTEGER DEFAULT 9,
+            last_daily_sent TEXT,
             created_at TEXT
         );
         """
@@ -95,6 +99,23 @@ def db_migrate() -> None:
         """
     )
     conn.commit()
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN default_mode TEXT DEFAULT 'Mixed'")
+    except Exception:
+        pass
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN notifications_enabled INTEGER DEFAULT 0")
+    except Exception:
+        pass
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN daily_hour INTEGER DEFAULT 9")
+    except Exception:
+        pass
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN last_daily_sent TEXT")
+    except Exception:
+        pass
+    conn.commit()
     conn.close()
 
 
@@ -117,6 +138,42 @@ def get_or_create_user(tg_user_id: int, username: Optional[str], language: str) 
     conn.commit()
     conn.close()
     return int(user_id)
+
+
+def get_user(tg_user_id: int) -> Optional[sqlite3.Row]:
+    conn = db_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM users WHERE tg_user_id = ?", (tg_user_id,))
+    r = cur.fetchone()
+    conn.close()
+    return r
+
+
+def set_user_mode(tg_user_id: int, mode: str) -> None:
+    conn = db_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET default_mode=? WHERE tg_user_id=?", (mode, tg_user_id))
+    conn.commit()
+    conn.close()
+
+
+def set_notifications(tg_user_id: int, enabled: int, hour: Optional[int] = None) -> None:
+    conn = db_conn()
+    cur = conn.cursor()
+    if hour is not None:
+        cur.execute("UPDATE users SET notifications_enabled=?, daily_hour=? WHERE tg_user_id=?", (enabled, hour, tg_user_id))
+    else:
+        cur.execute("UPDATE users SET notifications_enabled=? WHERE tg_user_id=?", (enabled, tg_user_id))
+    conn.commit()
+    conn.close()
+
+
+def mark_daily_sent(tg_user_id: int, date_str: str) -> None:
+    conn = db_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET last_daily_sent=? WHERE tg_user_id=?", (date_str, tg_user_id))
+    conn.commit()
+    conn.close()
 
 
 def insert_dream(user_id: int, text: str, model_version: str) -> int:
@@ -436,6 +493,26 @@ async def cmd_start(message: Message):
     await message.answer(ui["hello"])
 
 
+@dp.message(Command("mode"))
+async def cmd_mode(message: Message):
+    lang = detect_lang(message.text or message.from_user.language_code or "")
+    args = (message.text or "").split(maxsplit=1)
+    if len(args) < 2:
+        if lang == "uk":
+            await message.answer("Режими: Mixed | Psychological | Custom. Використай: /mode Mixed")
+        elif lang == "ru":
+            await message.answer("Режимы: Mixed | Psychological | Custom. Используй: /mode Mixed")
+        else:
+            await message.answer("Modes: Mixed | Psychological | Custom. Use: /mode Mixed")
+        return
+    mode = args[1].strip()
+    if mode.lower() in ["mixed", "psychological", "custom"]:
+        set_user_mode(message.from_user.id, mode.capitalize() if mode.lower() != "psychological" else "Psychological")
+        await message.answer(f"Mode set: {mode}")
+    else:
+        await message.answer("Unknown mode. Use: Mixed | Psychological | Custom")
+
+
 @dp.message(Command("dream"))
 async def cmd_dream(message: Message):
     lang = detect_lang(message.text or message.from_user.language_code or "")
@@ -461,6 +538,22 @@ async def cmd_stats(message: Message):
         f"Эмоции(avg): {emos}"
     )
     await message.answer(txt)
+
+
+@dp.message(Command("settings"))
+async def cmd_settings(message: Message):
+    lang = detect_lang(message.text or message.from_user.language_code or "")
+    u = get_user(message.from_user.id)
+    mode = (u["default_mode"] if u and "default_mode" in u.keys() else "Mixed") if u else "Mixed"
+    notif = (u["notifications_enabled"] if u and "notifications_enabled" in u.keys() else 0) if u else 0
+    hour = (u["daily_hour"] if u and "daily_hour" in u.keys() else 9) if u else 9
+    prem = user_is_premium(message.from_user.id)
+    if lang == "uk":
+        await message.answer(f"Налаштування:\nРежим: {mode}\nСповіщення: {'on' if notif else 'off'} {hour}:00\nПреміум: {'так' if prem else 'ні'}")
+    elif lang == "ru":
+        await message.answer(f"Настройки:\nРежим: {mode}\nУведомления: {'on' if notif else 'off'} {hour}:00\nПремиум: {'да' if prem else 'нет'}")
+    else:
+        await message.answer(f"Settings:\nMode: {mode}\nNotifications: {'on' if notif else 'off'} {hour}:00\nPremium: {'yes' if prem else 'no'}")
 
 
 @dp.message(Command("ask"))
@@ -539,6 +632,13 @@ async def cmd_ask(message: Message):
     await message.answer(ans)
 
 
+def parse_style_and_text(s: str) -> Tuple[Optional[str], str]:
+    m = re.match(r"\s*style\s*:\s*([\w-]+)\s*(.*)$", s, re.IGNORECASE)
+    if m:
+        return m.group(1), m.group(2).strip()
+    return None, s.strip()
+
+
 @dp.message(Command("image"))
 async def cmd_image(message: Message):
     lang = detect_lang(message.text or message.from_user.language_code or "")
@@ -557,7 +657,7 @@ async def cmd_image(message: Message):
         await message.answer(ui["image_paid"])
         return
 
-    dream_text = txt[1].strip()
+    style, dream_text = parse_style_and_text(txt[1])
     struct_prompt = build_struct_prompt(dream_text, lang)
     struct_raw = await call_gemini(struct_prompt)
     if not struct_raw:
@@ -571,27 +671,160 @@ async def cmd_image(message: Message):
     except Exception:
         pass
 
+    style_hint = f" Стиль: {style}." if style else ""
     if lang == "uk":
         prom = (
             "Сформуй короткий опис сцени для генерації зображення (<=120 слів): "
             "сеттінг, ключові символи, домінуючі кольори/світло, настрій за емоціями.\n"
-            f"Структура: {json.dumps(js, ensure_ascii=False)}"
+            f"Структура: {json.dumps(js, ensure_ascii=False)}{style_hint}"
         )
     elif lang == "ru":
         prom = (
             "Сформируй краткое описание сцены для генерации изображения (<=120 слов): "
             "сеттинг, ключевые символы, доминирующие цвета/свет, настроение по эмоциям.\n"
-            f"Структура: {json.dumps(js, ensure_ascii=False)}"
+            f"Структура: {json.dumps(js, ensure_ascii=False)}{style_hint}"
         )
     else:
         prom = (
             "Create a concise scene description for image generation (<=120 words): "
             "setting, key symbols, dominant colors/light, mood from emotions.\n"
-            f"Structure: {json.dumps(js, ensure_ascii=False)}"
+            f"Structure: {json.dumps(js, ensure_ascii=False)}{style_hint}"
         )
 
     desc = await call_gemini(prom)
     await message.answer(f"{ui['image_ok']}\n{(desc or '').strip()}")
+
+
+def normalize_mode(m: Optional[str]) -> str:
+    if not m:
+        return "Mixed"
+    ml = m.lower()
+    if ml.startswith("psych"):
+        return "Psychological"
+    if ml.startswith("cust"):
+        return "Custom"
+    return "Mixed"
+
+
+@dp.message(Command("history"))
+async def cmd_history(message: Message):
+    lang = detect_lang(message.text or message.from_user.language_code or "")
+    user_id = get_or_create_user(message.from_user.id, message.from_user.username, lang)
+    conn = db_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT a.json_struct, d.created_at FROM analyses a
+        JOIN dreams d ON a.dream_id=d.id
+        WHERE d.user_id=? ORDER BY d.id DESC LIMIT 5
+        """,
+        (user_id,),
+    )
+    rows = cur.fetchall()
+    conn.close()
+    parts = []
+    for r in rows:
+        try:
+            js = json.loads(r[0]) if r and r[0] else {}
+            date = r[1][:10] if r and r[1] else ""
+            summ = js.get("summary") or ""
+            themes = ", ".join(js.get("themes") or [])
+            parts.append(f"{date}: {summ}\n{('Темы: ' + themes) if themes else ''}")
+        except Exception:
+            continue
+    if not parts:
+        parts = ["Нет записей."] if lang == "ru" else (["Немає записів."] if lang == "uk" else ["No records."])
+    await message.answer("\n\n".join(parts))
+
+
+@dp.message(Command("tarot"))
+async def cmd_tarot(message: Message):
+    lang = detect_lang(message.text or message.from_user.language_code or "")
+    if not GOOGLE_API_KEY or genai is None:
+        await message.answer(choose_ui_text(lang)["no_api"])
+        return
+    args = (message.text or "").split(maxsplit=2)
+    spread = 3
+    topic = ""
+    if len(args) >= 2 and args[1].isdigit():
+        spread = max(1, min(5, int(args[1])))
+        topic = args[2] if len(args) >= 3 else ""
+    elif len(args) >= 2:
+        topic = args[1]
+    if lang == "uk":
+        prompt = f"Створи розклад Таро на {spread} карт(и) з темою: {topic}. Опиши карти й інтерпретацію."
+    elif lang == "ru":
+        prompt = f"Сделай расклад Таро на {spread} карт(ы) по теме: {topic}. Опиши карты и интерпретацию."
+    else:
+        prompt = f"Create a Tarot spread of {spread} cards on: {topic}. Describe cards and interpretation."
+    await message.chat.do("typing")
+    out = await call_gemini(prompt)
+    await message.answer(out or "")
+
+
+@dp.message(Command("compat"))
+async def cmd_compat(message: Message):
+    lang = detect_lang(message.text or message.from_user.language_code or "")
+    if not GOOGLE_API_KEY or genai is None:
+        await message.answer(choose_ui_text(lang)["no_api"])
+        return
+    txt = (message.text or "").split(maxsplit=1)
+    if len(txt) < 2:
+        if lang == "uk":
+            await message.answer("Введи дані так: /compat Ім'я1 YYYY-MM-DD; Ім'я2 YYYY-MM-DD")
+        elif lang == "ru":
+            await message.answer("Введи так: /compat Имя1 YYYY-MM-DD; Имя2 YYYY-MM-DD")
+        else:
+            await message.answer("Use: /compat Name1 YYYY-MM-DD; Name2 YYYY-MM-DD")
+        return
+    pair = txt[1]
+    if lang == "uk":
+        prompt = f"Проаналізуй сумісність двох людей за іменами та датами: {pair}. Дай емоційну сумісність, рекомендації, зони гармонії і конфлікту."
+    elif lang == "ru":
+        prompt = f"Проанализируй совместимость двух людей по именам и датам: {pair}. Дай эмоциональную совместимость, рекомендации, зоны гармонии и конфликта."
+    else:
+        prompt = f"Analyze compatibility of two people by names and birthdates: {pair}. Provide emotional compatibility, recommendations, harmony/conflict zones."
+    await message.chat.do("typing")
+    out = await call_gemini(prompt)
+    await message.answer(out or "")
+
+
+@dp.message(Command("daily"))
+async def cmd_daily(message: Message):
+    lang = detect_lang(message.text or message.from_user.language_code or "")
+    args = (message.text or "").split()
+    enabled = None
+    hour = None
+    if len(args) >= 2:
+        a = args[1].lower()
+        if a in ["on", "off"]:
+            enabled = 1 if a == "on" else 0
+        elif a.isdigit():
+            hour = int(a)
+    if len(args) >= 3 and args[2].isdigit():
+        hour = int(args[2])
+    uid = message.from_user.id
+    if enabled is None and hour is None:
+        u = get_user(uid)
+        curr = 'on' if (u and u.get('notifications_enabled')) else 'off'
+        h = u.get('daily_hour') if u else 9
+        if lang == "uk":
+            await message.answer(f"Статус: {curr}, година: {h}. Використай: /daily on 9 або /daily off")
+        elif lang == "ru":
+            await message.answer(f"Статус: {curr}, час: {h}. Используй: /daily on 9 или /daily off")
+        else:
+            await message.answer(f"Status: {curr}, hour: {h}. Use: /daily on 9 or /daily off")
+        return
+    if enabled is not None:
+        set_notifications(uid, enabled, hour)
+    elif hour is not None:
+        set_notifications(uid, get_user(uid).get('notifications_enabled') or 0, hour)
+    if lang == "uk":
+        await message.answer("Оновлено.")
+    elif lang == "ru":
+        await message.answer("Обновлено.")
+    else:
+        await message.answer("Updated.")
 
 
 @dp.message(F.text & ~F.text.startswith("/"))
@@ -608,11 +841,13 @@ async def handle_free_text(message: Message):
     await message.answer(ui["processing"])
     dream_id = insert_dream(user_id, user_text, GEMINI_MODEL)
 
-    js, psych, esoteric, advice = await analyze_dream(user_text, mode="Mixed", lang=lang)
+    u = get_user(message.from_user.id)
+    mode = normalize_mode(u.get("default_mode") if u else "Mixed")
+    js, psych, esoteric, advice = await analyze_dream(user_text, mode=mode, lang=lang)
     insert_analysis(
         dream_id,
         language=lang,
-        mode="Mixed",
+        mode=mode,
         json_struct=json.dumps(js, ensure_ascii=False),
         mixed=f"{psych}\n\n{esoteric}",
         psych=psych,
@@ -627,6 +862,44 @@ async def handle_free_text(message: Message):
 async def main() -> None:
     db_migrate()
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
+    async def notify_loop():
+        while True:
+            try:
+                now = datetime.utcnow()
+                date_str = now.date().isoformat()
+                conn = db_conn()
+                cur = conn.cursor()
+                cur.execute("SELECT tg_user_id, daily_hour, last_daily_sent FROM users WHERE notifications_enabled=1")
+                rows = cur.fetchall()
+                conn.close()
+                for r in rows:
+                    tg_id = r[0]
+                    hour = r[1] if r[1] is not None else 9
+                    last = r[2]
+                    if now.hour == int(hour) and last != date_str:
+                        lang = "ru"
+                        u = get_user(tg_id)
+                        if u and u.get("language"):
+                            lang = u.get("language")
+                        if not GOOGLE_API_KEY or genai is None:
+                            continue
+                        if lang == "uk":
+                            prompt = "Щоденна порада/карта дня для користувача. Коротко, бережно, 2–3 речення."
+                        elif lang == "ru":
+                            prompt = "Ежедневный совет/карта дня для пользователя. Коротко, бережно, 2–3 предложения."
+                        else:
+                            prompt = "Daily tip/card for the user. Short, gentle, 2–3 sentences."
+                        txt = await call_gemini(prompt)
+                        try:
+                            await bot.send_message(chat_id=tg_id, text=txt or "Have a gentle day.")
+                            mark_daily_sent(tg_id, date_str)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+            await asyncio.sleep(600)
+
+    asyncio.create_task(notify_loop())
     await Dispatcher.start_polling(dp, bot)
 
 
