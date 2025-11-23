@@ -8,7 +8,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 try:
     import google.generativeai as genai
@@ -115,6 +116,21 @@ def db_migrate() -> None:
         cur.execute("ALTER TABLE users ADD COLUMN last_daily_sent TEXT")
     except Exception:
         pass
+    conn.commit()
+    conn.close()
+
+
+def get_lang_for_user(tg_user_id: int, fallback: str = "ru") -> str:
+    u = get_user(tg_user_id)
+    if u and u.get("language"):
+        return u.get("language")
+    return fallback
+
+
+def set_language_for_user(tg_user_id: int, language: str) -> None:
+    conn = db_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET language=? WHERE tg_user_id=?", (language, tg_user_id))
     conn.commit()
     conn.close()
 
@@ -307,6 +323,114 @@ def choose_ui_text(lang: str) -> Dict[str, str]:
         "stats_title": "Your dream stats",
     }
 
+
+def menu_labels(lang: str) -> Dict[str, str]:
+    if lang == "uk":
+        return {
+            "compat": "Сумісність",
+            "interpret": "Тлумачення снів",
+            "spreads": "Розклади",
+            "diary": "Щоденник снів",
+            "settings": "Налаштування / Підписка",
+        }
+    if lang == "ru":
+        return {
+            "compat": "Совместимость",
+            "interpret": "Интерпретация снов",
+            "spreads": "Расклады",
+            "diary": "Дневник снов",
+            "settings": "Настройки / Подписка",
+        }
+    return {
+        "compat": "Compatibility",
+        "interpret": "Dream Interpretation",
+        "spreads": "Spreads",
+        "diary": "Dream Diary",
+        "settings": "Settings / Subscription",
+    }
+
+
+def main_menu_kb(lang: str) -> ReplyKeyboardMarkup:
+    m = menu_labels(lang)
+    return ReplyKeyboardMarkup(
+        resize_keyboard=True,
+        keyboard=[
+            [KeyboardButton(text=m["compat"]), KeyboardButton(text=m["interpret"])],
+            [KeyboardButton(text=m["spreads"]), KeyboardButton(text=m["diary"])],
+            [KeyboardButton(text=m["settings"])],
+        ],
+    )
+
+
+def compat_menu_kb(lang: str) -> InlineKeyboardMarkup:
+    if lang == "uk":
+        items = [("За снами", "compat:by_dreams"), ("За датами народження", "compat:by_birthdates"), ("За архетипами", "compat:by_archetypes")]
+    elif lang == "ru":
+        items = [("По снам", "compat:by_dreams"), ("По датам рождения", "compat:by_birthdates"), ("По архетипам", "compat:by_archetypes")]
+    else:
+        items = [("By dreams", "compat:by_dreams"), ("By birthdates", "compat:by_birthdates"), ("By archetypes", "compat:by_archetypes")]
+    kb = InlineKeyboardBuilder()
+    for text, data in items:
+        kb.button(text=text, callback_data=data)
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def interpret_menu_kb(lang: str) -> InlineKeyboardMarkup:
+    if lang == "uk":
+        items = [("Mixed", "interpret:mixed"), ("Psychological", "interpret:psych"), ("Custom", "interpret:custom"), ("Зробити режимом за замовч.", "interpret:set_mode")]
+    elif lang == "ru":
+        items = [("Mixed", "interpret:mixed"), ("Psychological", "interpret:psych"), ("Custom", "interpret:custom"), ("Сделать режимом по умолч.", "interpret:set_mode")]
+    else:
+        items = [("Mixed", "interpret:mixed"), ("Psychological", "interpret:psych"), ("Custom", "interpret:custom"), ("Set as default", "interpret:set_mode")]
+    kb = InlineKeyboardBuilder()
+    for text, data in items:
+        kb.button(text=text, callback_data=data)
+    kb.adjust(2)
+    return kb.as_markup()
+
+
+def spreads_menu_kb(lang: str) -> InlineKeyboardMarkup:
+    if lang == "uk":
+        items = [("1 карта (порада)", "spreads:one"), ("3 карти (П/Н/М)", "spreads:three"), ("5 карт (глибоко)", "spreads:five")]
+    elif lang == "ru":
+        items = [("1 карта (совет)", "spreads:one"), ("3 карты (П/Н/Б)", "spreads:three"), ("5 карт (глубоко)", "spreads:five")]
+    else:
+        items = [("1 card (advice)", "spreads:one"), ("3 cards (P/N/F)", "spreads:three"), ("5 cards (deep)", "spreads:five")]
+    kb = InlineKeyboardBuilder()
+    for text, data in items:
+        kb.button(text=text, callback_data=data)
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def diary_menu_kb(lang: str) -> InlineKeyboardMarkup:
+    if lang == "uk":
+        items = [("Історія", "diary:history"), ("Статистика", "diary:stats"), ("Карта символів", "diary:symbol_map"), ("Попередження", "diary:warnings")]
+    elif lang == "ru":
+        items = [("История", "diary:history"), ("Статистика", "diary:stats"), ("Карта символов", "diary:symbol_map"), ("Предупреждения", "diary:warnings")]
+    else:
+        items = [("History", "diary:history"), ("Stats", "diary:stats"), ("Symbol map", "diary:symbol_map"), ("Warnings", "diary:warnings")]
+    kb = InlineKeyboardBuilder()
+    for text, data in items:
+        kb.button(text=text, callback_data=data)
+    kb.adjust(2)
+    return kb.as_markup()
+
+
+def settings_menu_kb(lang: str) -> InlineKeyboardMarkup:
+    if lang == "uk":
+        items = [("Режим за замовч.", "settings:mode"), ("Увімкнути нотиф.", "settings:notifications_on"), ("Вимкнути нотиф.", "settings:notifications_off"), ("Мова RU", "settings:language:ru"), ("Мова UK", "settings:language:uk"), ("Language EN", "settings:language:en")]
+    elif lang == "ru":
+        items = [("Режим по умолч.", "settings:mode"), ("Включить уведомл.", "settings:notifications_on"), ("Выключить уведомл.", "settings:notifications_off"), ("Язык RU", "settings:language:ru"), ("Мова UK", "settings:language:uk"), ("Language EN", "settings:language:en")]
+    else:
+        items = [("Default mode", "settings:mode"), ("Enable notif.", "settings:notifications_on"), ("Disable notif.", "settings:notifications_off"), ("Language RU", "settings:language:ru"), ("Language UK", "settings:language:uk"), ("Language EN", "settings:language:en")]
+    kb = InlineKeyboardBuilder()
+    for text, data in items:
+        kb.button(text=text, callback_data=data)
+    kb.adjust(2)
+    return kb.as_markup()
+
 def gemini_client():
     if not GOOGLE_API_KEY or genai is None:
         return None
@@ -490,7 +614,7 @@ async def cmd_start(message: Message):
     lang = detect_lang(message.text or message.from_user.language_code or "")
     ui = choose_ui_text(lang)
     get_or_create_user(message.from_user.id, message.from_user.username, lang)
-    await message.answer(ui["hello"])
+    await message.answer(ui["hello"], reply_markup=main_menu_kb(lang))
 
 
 @dp.message(Command("mode"))
@@ -834,6 +958,24 @@ async def handle_free_text(message: Message):
     ui = choose_ui_text(lang)
     user_id = get_or_create_user(message.from_user.id, message.from_user.username, lang)
 
+    # Reply menu buttons: open corresponding inline submenus
+    ml = menu_labels(lang)
+    if user_text.strip() == ml["compat"]:
+        await message.answer(ml["compat"], reply_markup=compat_menu_kb(lang))
+        return
+    if user_text.strip() == ml["interpret"]:
+        await message.answer(ml["interpret"], reply_markup=interpret_menu_kb(lang))
+        return
+    if user_text.strip() == ml["spreads"]:
+        await message.answer(ml["spreads"], reply_markup=spreads_menu_kb(lang))
+        return
+    if user_text.strip() == ml["diary"]:
+        await message.answer(ml["diary"], reply_markup=diary_menu_kb(lang))
+        return
+    if user_text.strip() == ml["settings"]:
+        await message.answer(ml["settings"], reply_markup=settings_menu_kb(lang))
+        return
+
     if not GOOGLE_API_KEY or genai is None:
         await message.answer(ui["no_api"])
         return
@@ -857,6 +999,175 @@ async def handle_free_text(message: Message):
 
     rendered = render_analysis_text(js, psych, esoteric, advice, lang)
     await message.answer(rendered)
+
+
+@dp.callback_query(F.data.startswith("compat:"))
+async def cb_compat(call: CallbackQuery):
+    lang = get_lang_for_user(call.from_user.id, detect_lang(call.message.text or ""))
+    action = call.data.split(":", 1)[1]
+    if action == "by_birthdates":
+        if lang == "uk":
+            txt = "Введи: /compat Ім'я1 YYYY-MM-DD; Ім'я2 YYYY-MM-DD"
+        elif lang == "ru":
+            txt = "Введи: /compat Имя1 YYYY-MM-DD; Имя2 YYYY-MM-DD"
+        else:
+            txt = "Use: /compat Name1 YYYY-MM-DD; Name2 YYYY-MM-DD"
+        await call.message.answer(txt)
+    elif action == "by_dreams":
+        if lang == "uk":
+            txt = "Надішли ключові символи обох снів у форматі: Символи А: ...; Символи Б: ... — і я порівняю."
+        elif lang == "ru":
+            txt = "Пришли ключевые символы двух снов в формате: Символы A: ...; Символы B: ... — и я сравню."
+        else:
+            txt = "Send key symbols of two dreams as: Symbols A: ...; Symbols B: ... — I'll compare."
+        await call.message.answer(txt)
+    elif action == "by_archetypes":
+        if lang == "uk":
+            txt = "Міні‑тест архетипів: скоро."
+        elif lang == "ru":
+            txt = "Мини‑тест архетипов: скоро."
+        else:
+            txt = "Archetype mini‑test: coming soon."
+        await call.message.answer(txt)
+    await call.answer()
+
+
+@dp.callback_query(F.data.startswith("interpret:"))
+async def cb_interpret(call: CallbackQuery):
+    lang = get_lang_for_user(call.from_user.id, detect_lang(call.message.text or ""))
+    parts = call.data.split(":")
+    action = parts[1] if len(parts) > 1 else ""
+    if action == "set_mode":
+        # ask to choose default mode via inline again or suggest /mode
+        if lang == "uk":
+            txt = "Використай /mode Mixed | Psychological | Custom — щоб встановити режим за замовчуванням."
+        elif lang == "ru":
+            txt = "Используй /mode Mixed | Psychological | Custom — чтобы установить режим по умолчанию."
+        else:
+            txt = "Use /mode Mixed | Psychological | Custom to set the default mode."
+        await call.message.answer(txt)
+    else:
+        # guide to send a dream now; analysis uses saved default mode
+        if lang == "uk":
+            txt = "Надішли текст сну одним повідомленням — я проаналізую. Щоб зберегти режим, скористайся /mode."
+        elif lang == "ru":
+            txt = "Пришли текст сна одним сообщением — я проанализирую. Чтобы сохранить режим, используй /mode."
+        else:
+            txt = "Send your dream in a single message — I'll analyze it. To save mode, use /mode."
+        await call.message.answer(txt)
+    await call.answer()
+
+
+@dp.callback_query(F.data.startswith("spreads:"))
+async def cb_spreads(call: CallbackQuery):
+    lang = get_lang_for_user(call.from_user.id, detect_lang(call.message.text or ""))
+    action = call.data.split(":", 1)[1]
+    if action == "one":
+        cmd = "/tarot 1"
+    elif action == "three":
+        cmd = "/tarot 3"
+    elif action == "five":
+        cmd = "/tarot 5"
+    else:
+        cmd = "/tarot 3"
+    if lang == "uk":
+        txt = f"Використай: {cmd} тема"
+    elif lang == "ru":
+        txt = f"Используй: {cmd} тема"
+    else:
+        txt = f"Use: {cmd} topic"
+    await call.message.answer(txt)
+    await call.answer()
+
+
+@dp.callback_query(F.data.startswith("diary:"))
+async def cb_diary(call: CallbackQuery):
+    lang = get_lang_for_user(call.from_user.id, detect_lang(call.message.text or ""))
+    action = call.data.split(":", 1)[1]
+    user_id = get_or_create_user(call.from_user.id, call.from_user.username, lang)
+    if action == "history":
+        # reuse logic from /history
+        conn = db_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT a.json_struct, d.created_at FROM analyses a
+            JOIN dreams d ON a.dream_id=d.id
+            WHERE d.user_id=? ORDER BY d.id DESC LIMIT 5
+            """,
+            (user_id,),
+        )
+        rows = cur.fetchall()
+        conn.close()
+        parts = []
+        for r in rows:
+            try:
+                js = json.loads(r[0]) if r and r[0] else {}
+                date = r[1][:10] if r and r[1] else ""
+                summ = js.get("summary") or ""
+                themes = ", ".join(js.get("themes") or [])
+                parts.append(f"{date}: {summ}\n{('Темы: ' + themes) if themes else ''}")
+            except Exception:
+                continue
+        if not parts:
+            parts = ["Нет записей."] if lang == "ru" else (["Немає записів."] if lang == "uk" else ["No records."])
+        await call.message.answer("\n\n".join(parts))
+    elif action == "stats":
+        st = get_user_stats(user_id)
+        top_themes = ", ".join([f"{k}({v})" for k, v in st["top_themes"]]) or "—"
+        top_arch = ", ".join([f"{k}({v})" for k, v in st["top_archetypes"]]) or "—"
+        emos = ", ".join([f"{k}={v}" for k, v in st["avg_emotions"].items()]) or "—"
+        title = choose_ui_text(lang)["stats_title"]
+        txt = (
+            f"{title}\n"
+            f"Всего снов: {st['total_dreams']}\n"
+            f"С анализом: {st['total_analyses']}\n"
+            f"Топ темы: {top_themes}\n"
+            f"Архетипы: {top_arch}\n"
+            f"Эмоции(avg): {emos}"
+        )
+        await call.message.answer(txt)
+    elif action == "symbol_map":
+        if lang == "uk":
+            await call.message.answer("Карта символів: скоро.")
+        elif lang == "ru":
+            await call.message.answer("Карта символов: скоро.")
+        else:
+            await call.message.answer("Symbol map: coming soon.")
+    elif action == "warnings":
+        if lang == "uk":
+            await call.message.answer("Попередження: скоро.")
+        elif lang == "ru":
+            await call.message.answer("Предупреждения: скоро.")
+        else:
+            await call.message.answer("Warnings: coming soon.")
+    await call.answer()
+
+
+@dp.callback_query(F.data.startswith("settings:"))
+async def cb_settings(call: CallbackQuery):
+    lang = get_lang_for_user(call.from_user.id, detect_lang(call.message.text or ""))
+    parts = call.data.split(":")
+    action = parts[1] if len(parts) > 1 else ""
+    if action == "notifications_on":
+        set_notifications(call.from_user.id, 1)
+        await call.message.answer("Notifications ON" if lang == "en" else ("Уведомления включены" if lang == "ru" else "Сповіщення увімкнено"))
+    elif action == "notifications_off":
+        set_notifications(call.from_user.id, 0)
+        await call.message.answer("Notifications OFF" if lang == "en" else ("Уведомления выключены" if lang == "ru" else "Сповіщення вимкнено"))
+    elif action == "mode":
+        # Suggest using /mode to persist
+        if lang == "uk":
+            await call.message.answer("Використай команду /mode Mixed | Psychological | Custom")
+        elif lang == "ru":
+            await call.message.answer("Используй команду /mode Mixed | Psychological | Custom")
+        else:
+            await call.message.answer("Use /mode Mixed | Psychological | Custom")
+    elif action == "language" and len(parts) >= 3:
+        code = parts[2]
+        set_language_for_user(call.from_user.id, code)
+        await call.message.answer("Language updated." if code == "en" else ("Язык обновлён." if code == "ru" else "Мову оновлено."), reply_markup=main_menu_kb(code))
+    await call.answer()
 
 
 async def main() -> None:
