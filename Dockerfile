@@ -13,11 +13,6 @@ COPY . /app
 RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Do not put secrets in the image; set them as Railway Variables
-# Example Railway Variables to set in dashboard:
-#   TELEGRAM_BOT_TOKEN=<your token>
-#   GOOGLE_API_KEY=<your Gemini key>
-#   GEMINI_MODEL=gemini-1.5-flash
-#   DREAMMAP_DB=/data/dreammap.sqlite3
+
 
 CMD ["python", "-u", "dream.py"]
