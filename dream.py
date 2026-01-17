@@ -692,6 +692,7 @@ def build_interpret_prompt(struct_json: str, mode: str, lang: str) -> str:
             "5) Для символических: вплетай символы и эмоции в текст, не перечисляй сухими списками.\n"
             "6) Для бытовых: опиши действия и эмоции, дай короткий практический совет.\n"
             "7) Не повторяй один и тот же текст. Каждый ответ уникален и конкретен, с упоминанием минимум 2 деталей (объект/действие/эмоция).\n"
+            "8) Не цитируй и не пересказывай дословно текст сна; перескажи смысл своими словами.\n"
         )
     elif lang == "uk":
         rubric = (
@@ -703,6 +704,7 @@ def build_interpret_prompt(struct_json: str, mode: str, lang: str) -> str:
             "5) Для символічних: вплітай символи й емоції в текст, не роби сухих списків.\n"
             "6) Для побутових: опиши дії й емоції, дай коротку практичну пораду.\n"
             "7) Не повторюй той самий текст. Кожна відповідь унікальна й конкретна, з мінімум 2 деталями (обʼєкт/дія/емоція).\n"
+            "8) Не цитуй і не переказуй дослівно сон; передай сенс своїми словами.\n"
         )
     else:
         rubric = (
@@ -714,6 +716,7 @@ def build_interpret_prompt(struct_json: str, mode: str, lang: str) -> str:
             "5) For symbolic: weave symbols and emotions into prose, no dry lists.\n"
             "6) For domestic: describe actions/emotions, give a short practical advice.\n"
             "7) Never reuse the same wording. Each answer is unique and mentions at least 2 concrete details.\n"
+            "8) Do not quote or restate the dream verbatim; paraphrase in your own words.\n"
         )
     return (
         f"{header}\n\n{base}\n"
@@ -809,6 +812,10 @@ def validate_ai_output(text: str, js: Dict[str, Any], psych: str, esoteric: str,
     for f in forbidden:
         if f in combined and f not in t:
             return False, f"Убери штамп ‘{f}’ — его не было в описании сна."
+    # avoid echoing summary verbatim
+    summary = (js.get("summary") or "").strip()
+    if len(summary) >= 24 and summary.lower()[:24] in combined:
+        return False, "Не пересказывай сон дословно — переформулируй своими словами, используя детали."
     return True, "ok"
 
 
@@ -992,17 +999,52 @@ async def analyze_dream(text: str, mode: str, lang: str) -> Tuple[Dict[str, Any]
         sym = js.get("symbols") or []
         summ = (js.get("summary") or "").strip()
         if depth == "domestic":
-            # Plain, clear, no mysticism — dynamic from summary/characters
+            # Plain, clear, no mysticism — synthesize from detected hints (no verbatim echo)
+            s = (text or "").lower()
             names = ", ".join([c.get("name") for c in (js.get("characters") or []) if isinstance(c, dict) and c.get("name")])
+            hints: List[str] = []
+            # School/late/teacher
+            if any(k in s for k in ["школ", "урок", "класс", "урок", "teacher", "class"]) or any(k in s for k in ["опоздал", "опоздала", "запізнився", "запізнилась", "late"]):
+                if lang == "ru":
+                    hints.append("про ожидания и ответственность: хочется успевать, но без лишнего давления")
+                elif lang == "uk":
+                    hints.append("про очікування і відповідальність: хочеться встигати без зайвого тиску")
+                else:
+                    hints.append("about expectations and responsibility — wanting to keep up without extra pressure")
+            # Cafe/laughter/video
+            if any(k in s for k in ["кафе", "coffee", "bar", "смех", "смеял", "сміяли", "видео", "video"]):
+                if lang == "ru":
+                    hints.append("про лёгкость и тёплый контакт — быть рядом и разделять радость")
+                elif lang == "uk":
+                    hints.append("про легкість і теплий контакт — бути поряд і ділитися радістю")
+                else:
+                    hints.append("about lightness and warm connection — being together and sharing joy")
+            # Hand-holding
+            if any(k in s for k in ["за руку", "держались за руку", "held hands", "hand in hand"]):
+                if lang == "ru":
+                    hints.append("про близость и доверие — тяготение к простому теплу")
+                elif lang == "uk":
+                    hints.append("про близькість і довіру — потяг до простого тепла")
+                else:
+                    hints.append("about closeness and trust — a pull toward simple warmth")
+            # Purchase/clothes
+            if any(k in s for k in ["купил", "купила", "купить", "покуп", "примерил", "примерила", "свитер", "кофта", "одеж", "куртка", "платье"]) or any(k in s for k in ["купив", "придбав", "светр", "одяг"]):
+                if lang == "ru":
+                    hints.append("про обновление образа и комфорт — подобрать то, что сидит по тебе")
+                elif lang == "uk":
+                    hints.append("про оновлення і комфорт — підібрати те, що пасує саме тобі")
+                else:
+                    hints.append("about renewal and comfort — choosing what truly fits you")
+
             if lang == "ru":
-                core = f"Короткий бытовой сон про {names}. " if names else "Короткий бытовой сон. "
-                psych = core + (summ or "Про простое чувство сейчас.")
+                base = "Короткий бытовой сон" + (f" про {names}" if names else "") + ": "
+                psych = base + ("; ".join(hints) if hints else "про простые чувства и заботу о себе")
             elif lang == "uk":
-                core = f"Короткий побутовий сон про {names}. " if names else "Короткий побутовий сон. "
-                psych = core + (summ or "Про просте відчуття зараз.")
+                base = "Короткий побутовий сон" + (f" про {names}" if names else "") + ": "
+                psych = base + ("; ".join(hints) if hints else "про прості відчуття і турботу про себе")
             else:
-                core = f"A brief domestic dream about {names}. " if names else "A brief domestic dream. "
-                psych = core + (summ or "About a simple present feeling.")
+                base = "A brief domestic dream" + (f" about {names}" if names else "") + ": "
+                psych = base + ("; ".join(hints) if hints else "about simple feelings and self-care")
             esoteric = ""
             if not advice:
                 if lang == "ru":
