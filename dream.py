@@ -880,34 +880,63 @@ def render_analysis_text(js: Dict[str, Any], psych: str, esoteric: str, advice: 
     summ = js.get("summary") or ""
 
     if lang == "uk":
-        header = "Аналіз сну (Mixed)"
+        # М'яка денникова подача: короткі рядки, вплетені образи, без сухих списків
+        header = "Аналіз сну 🌙"
+        # Емоції: українською, без чисел
+        uk_emo_map = {"calm": "спокій", "anxiety": "тривога", "joy": "радість", "sad": "смуток"}
+        emo_words: List[str] = []
+        for e in (js.get("emotions") or []):
+            lbl = (e.get("label") or "").lower()
+            if lbl:
+                emo_words.append(uk_emo_map.get(lbl, lbl))
+        emo_line = ", ".join(dict.fromkeys([w for w in emo_words if w])) or "спокійна присутність"
+
+        # Теми у короткий сенсовий заголовок
+        themes_uk = {"transition": "перехід", "timelessness": "поза часом", "flow/emotion": "рух через відчуття"}
+        th = [themes_uk.get(t, t) for t in (js.get("themes") or [])]
+        head_core = ", ".join(dict.fromkeys([t for t in th if t])) or "внутрішній пошук"
+
+        # Вплетені інтерпретації символів
+        sym_words = [s if isinstance(s, str) else str(s) for s in (js.get("symbols") or [])]
+        uk_symbol_map = {
+            "зупинка": "Зупинка — пауза між етапами. Минуле поруч, але тане в тумані 🚏",
+            "туман": "Туман — мʼяка невизначеність без страху",
+            "карта": "Карта, що змінюється — шлях ще складається. Дивись серцем 👁️",
+            "без обличчя": "Без обличчя — знайомий стан, частина тебе, вже прожите 🤍",
+            "відлуння": "Імʼя з‑під землі — поклик внутрішнього голосу 🌱",
+            "сходи": "Сходи вниз, як угору — заглиблюючись, ти зростаєш 🪜",
+            "лист": "Лист без слів — сенс уже зрозумілий, просто не сказаний уголос 💌",
+            "світло": "Світло дитинства — відчуття безпеки і твоєї суті 🌙",
+            "час": "Час бере за руку — не поспішай, усе вчасно ⏳",
+            "вода": "Тепла вода під ногами — рух через відчуття",
+            "годинник": "Годинник без стрілок — поза звичним ритмом",
+            "місто": "Прозоре місто — межі між зовнішнім і внутрішнім стираються",
+            "небо": "Низьке небо — близькість переживання, зосередженість",
+        }
+        symbol_lines: List[str] = []
+        for s in sym_words[:8]:
+            k = s.lower()
+            for key, line in uk_symbol_map.items():
+                if key in k:
+                    symbol_lines.append(line)
+                    break
+
         parts = [
             header,
-            f"Локація: {loc}",
-            chars,
-            acts,
-            syms,
-            f"Емоції: {emos}",
-            thms,
-            arch,
-            f"Стислий підсумок: {summ}",
-            "— Психологічне —",
-            psych or "(н/д)",
-            "— Езотеричне —",
-            esoteric or "(н/д)",
-            "— Порада/Урок —",
-            advice or "(н/д)",
+            f"Цей сон — про {head_core} ✨",
+            (f"Локація: {loc}" if loc else ""),
+            (f"Емоційний настрій: {emo_line} 🌊" if emo_line else ""),
+        ] + symbol_lines + [
+            (f"Коротко: {summ}" if summ else ""),
+            (psych or ""),
+            (esoteric or ""),
+            (f"Порада: {advice}" if advice else ""),
         ]
     elif lang == "ru":
-        # Мягкая локализация без сухих списков и англ. меток
-        header = "Анализ сна  🌙"
-        # Эмоции: отобразить без чисел и английских ярлыков
-        ru_emo_map = {
-            "calm": "спокойствие",
-            "anxiety": "тревога",
-            "joy": "радость",
-            "sad": "печаль",
-        }
+        # Мягкая дневниковая подача: короткие строки, вплетённые образы, без сухих списков
+        header = "Анализ сна 🌙"
+        # Эмоции: по‑русски, без чисел
+        ru_emo_map = {"calm": "спокойствие", "anxiety": "тревога", "joy": "радость", "sad": "печаль"}
         emo_words: List[str] = []
         for e in (js.get("emotions") or []):
             lbl = (e.get("label") or "").lower()
@@ -915,42 +944,94 @@ def render_analysis_text(js: Dict[str, Any], psych: str, esoteric: str, advice: 
                 emo_words.append(ru_emo_map.get(lbl, lbl))
         emo_line = ", ".join(dict.fromkeys([w for w in emo_words if w])) or "спокойное присутствие"
 
-        # Символы: вплетённый список без заголовка Symbols
+        # Темы в короткий смысл заголовка
+        themes_ru = {"transition": "переход", "timelessness": "вне времени", "flow/emotion": "движение через чувство"}
+        th = [themes_ru.get(t, t) for t in (js.get("themes") or [])]
+        head_core = ", ".join(dict.fromkeys([t for t in th if t])) or "внутренний поиск"
+
+        # Вплетённые интерпретации символов
         sym_words = [s if isinstance(s, str) else str(s) for s in (js.get("symbols") or [])]
-        sym_line = ", ".join(dict.fromkeys(sym_words[:4]))
-        key_imgs = (f"Ключевые образы: {sym_line}." if sym_line else "")
+        ru_symbol_map = {
+            "остановка": "Остановка — пауза между этапами. Прошлое рядом, но уходит в туман 🚏",
+            "туман": "Туман — мягкая неопределённость без страха",
+            "карта": "Карта, что меняется — путь ещё складывается. Смотри сердцем 👁️",
+            "человек без лица": "Безликий — знакомое состояние, часть тебя, уже прожитый опыт 🤍",
+            "эхо": "Имя из‑под земли — зов внутреннего голоса 🌱",
+            "лестница": "Лестница вниз, как вверх — углубляясь, ты растёшь 🪜",
+            "письмо": "Письмо без слов — смысл уже понятен, просто не сказан вслух 💌",
+            "свет": "Свет детства — чувство безопасности и настоящей тебя 🌙",
+            "время": "Время берёт за руку — не спеши, всё вовремя ⏳",
+            "вода": "Вода под ногами — движение через чувства",
+            "часы": "Часы без стрелок — выход из привычного ритма",
+            "город": "Прозрачный город — границы между внешним и внутренним стираются",
+            "небо": "Низкое небо — близость переживания, сосредоточенность",
+        }
+        symbol_lines: List[str] = []
+        for s in sym_words[:8]:
+            k = s.lower()
+            for key, line in ru_symbol_map.items():
+                if key in k:
+                    symbol_lines.append(line)
+                    break
 
         parts = [
             header,
-            f"Локация: {loc}" if loc else "",
+            f"Этот сон — про {head_core} ✨",
+            (f"Локация: {loc}" if loc else ""),
             (f"Эмоциональный фон: {emo_line} 🌊" if emo_line else ""),
-            (key_imgs if key_imgs else ""),
-            (f"Краткое резюме: {summ}" if summ else ""),
-            "— Психологическая интерпретация 🧠 —",
-            psych or "(н/д)",
-            "— Эзотерическая интерпретация ✨ —",
-            esoteric or "(н/д)",
-            "— Совет / урок 🌱 —",
-            advice or "(н/д)",
+        ] + symbol_lines + [
+            (f"Кратко: {summ}" if summ else ""),
+            (psych or ""),
+            (esoteric or ""),
+            (f"Совет: {advice}" if advice else ""),
         ]
     else:
-        header = "Dream Analysis (Mixed)"
+        # Soft, diary-like English rendering
+        header = "Dream Analysis 🌙"
+        # Emotions: English words only, no scores
+        emo_words = [
+            (e.get("label") or "").lower() for e in (js.get("emotions") or []) if (e.get("label") or "").strip()
+        ]
+        emo_line = ", ".join(dict.fromkeys([w for w in emo_words if w])) or "calm presence"
+
+        themes_en = {"transition": "transition", "timelessness": "out of time", "flow/emotion": "moving by feeling"}
+        th = [themes_en.get(t, t) for t in (js.get("themes") or [])]
+        head_core = ", ".join(dict.fromkeys([t for t in th if t])) or "inner seeking"
+
+        sym_words = [s if isinstance(s, str) else str(s) for s in (js.get("symbols") or [])]
+        en_symbol_map = {
+            "stop": "A stop — a pause between phases. The past is near, yet fading in mist 🚏",
+            "fog": "Fog — gentle uncertainty without fear",
+            "map": "A changing map — the path is still forming. Look with the heart 👁️",
+            "faceless": "Faceless — a familiar state, a part of you already lived 🤍",
+            "echo": "Your name from below — your inner voice calling 🌱",
+            "stair": "Stairs down as up — going deeper, you grow 🪜",
+            "letter": "A wordless letter — meaning known, not yet spoken 💌",
+            "light": "Childhood light — safety and your true self 🌙",
+            "time": "Time takes your hand — no rush, all in time ⏳",
+            "water": "Warm water underfoot — moving through feeling",
+            "clock": "Clocks without hands — outside the usual rhythm",
+            "city": "Transparent city — inner and outer blur",
+            "sky": "Low sky — closeness of experience, focus",
+        }
+        symbol_lines: List[str] = []
+        for s in sym_words[:8]:
+            k = s.lower()
+            for key, line in en_symbol_map.items():
+                if key in k:
+                    symbol_lines.append(line)
+                    break
+
         parts = [
             header,
-            f"Location: {loc}",
-            chars,
-            acts,
-            syms,
-            f"Emotions: {emos}",
-            thms,
-            arch,
-            f"Summary: {summ}",
-            "— Psychological —",
-            psych or "(n/a)",
-            "— Esoteric —",
-            esoteric or "(n/a)",
-            "— Advice/Lesson —",
-            advice or "(n/a)",
+            f"This dream is about {head_core} ✨",
+            (f"Location: {loc}" if loc else ""),
+            (f"Emotional tone: {emo_line} 🌊" if emo_line else ""),
+        ] + symbol_lines + [
+            (f"Briefly: {summ}" if summ else ""),
+            (psych or ""),
+            (esoteric or ""),
+            (f"Advice: {advice}" if advice else ""),
         ]
     return "\n".join([p for p in parts if p])
 
