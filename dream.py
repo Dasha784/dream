@@ -937,7 +937,7 @@ async def cmd_ask(message: Message):
         except Exception:
             continue
 
-    if not GOOGLE_API_KEY or genai is None:
+    if not GOOGLE_API_KEY or genai_new is None:
         await message.answer(ui["no_api"])
         return
 
@@ -1085,7 +1085,7 @@ async def cmd_history(message: Message):
 @dp.message(Command("tarot"))
 async def cmd_tarot(message: Message):
     lang = get_lang_for_user(message.from_user.id, detect_lang(message.text or ""))
-    if not GOOGLE_API_KEY or genai is None:
+    if not GOOGLE_API_KEY or genai_new is None:
         await message.answer(choose_ui_text(lang)["no_api"])
         return
     args = (message.text or "").split(maxsplit=2)
@@ -1105,7 +1105,7 @@ async def cmd_tarot(message: Message):
 @dp.message(Command("compat"))
 async def cmd_compat(message: Message):
     lang = get_lang_for_user(message.from_user.id, detect_lang(message.text or ""))
-    if not GOOGLE_API_KEY or genai is None:
+    if not GOOGLE_API_KEY or genai_new is None:
         await message.answer(choose_ui_text(lang)["no_api"])
         return
     txt = (message.text or "").split(maxsplit=1)
@@ -1207,7 +1207,7 @@ async def handle_free_text(message: Message):
         await message.answer(ml["settings"], reply_markup=settings_menu_kb(lang))
         return
 
-    if not GOOGLE_API_KEY or genai is None:
+    if not GOOGLE_API_KEY or genai_new is None:
         await message.answer(ui["no_api"])
         return
 
@@ -1215,7 +1215,7 @@ async def handle_free_text(message: Message):
     dream_id = insert_dream(user_id, user_text, GEMINI_MODEL)
 
     u = get_user(message.from_user.id)
-    mode = normalize_mode(u.get("default_mode") if u else "Mixed")
+    mode = normalize_mode(row_get(u, "default_mode", "Mixed"))
     js, psych, esoteric, advice = await analyze_dream(user_text, mode=mode, lang=lang)
     insert_analysis(
         dream_id,
