@@ -8,6 +8,22 @@ from zoneinfo import ZoneInfo
 from typing import Any, Dict, List, Optional, Tuple
 import random
 
+# Non-repeat cache for short advice lines to avoid repetition across recent answers
+_recent_cache: Dict[str, List[str]] = {}
+
+def choose_nonrepeat(options: List[str], key: str, k: int = 5) -> str:
+    used = _recent_cache.get(key, [])
+    candidates = [o for o in options if o not in used]
+    if not candidates:
+        candidates = options[:]
+        used = []
+    choice = random.choice(candidates)
+    used.append(choice)
+    if len(used) > k:
+        used = used[-k:]
+    _recent_cache[key] = used
+    return choice
+
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
@@ -685,9 +701,9 @@ def build_interpret_prompt(struct_json: str, mode: str, lang: str) -> str:
     if lang == "ru":
         rubric = (
             "\nПравила генерации:\n"
-            "1) Сначала классифицируй сон: Бытовой | Символический | Смешанный.\n"
+            "1) Сначала классифицируй сон: Бытовой | Романтический | Символический/странный | Тревожный | Конфликтный | Смешанный.\n"
             "2) Выдели ключевые элементы: действия, объекты, места, персонажи, эмоции, символы.\n"
-            "3) Пиши в подходящем стиле (ясно/без эзотерики для бытовых; образно/мягко для символических, 1–2 эмодзи по смыслу).\n"
+            "3) Пиши в подходящем стиле: для бытовых/романтических — кратко, тепло, без эзотерики; для символических/странных — образно, мягко, вплетая символы; для тревожных/конфликтных — сочувственно и практично. 1–2 эмодзи по смыслу.\n"
             "4) Используй только реальные детали сна. Не вставляй символы/метафоры, если их не было.\n"
             "5) Для символических: вплетай символы и эмоции в текст, не перечисляй сухими списками.\n"
             "6) Для бытовых: опиши действия и эмоции, дай короткий практический совет.\n"
@@ -697,9 +713,9 @@ def build_interpret_prompt(struct_json: str, mode: str, lang: str) -> str:
     elif lang == "uk":
         rubric = (
             "\nПравила генерації:\n"
-            "1) Спочатку класифікуй сон: Побутовий | Символічний | Змішаний.\n"
+            "1) Спочатку класифікуй сон: Побутовий | Романтичний | Символічний/дивний | Тривожний | Конфліктний | Змішаний.\n"
             "2) Виділи ключові елементи: дії, обʼєкти, місця, персонажі, емоції, символи.\n"
-            "3) Пиши у відповідному стилі (ясно/без езотерики для побутових; образно/мʼяко для символічних, 1–2 емодзі за змістом).\n"
+            "3) Пиши у відповідному стилі: для побутових/романтичних — коротко, тепло, без езотерики; для символічних/дивних — образно, мʼяко, вплітаючи символи; для тривожних/конфліктних — співчутливо й практично. 1–2 емодзі.\n"
             "4) Використовуй лише реальні деталі сну. Не вставляй символи/метафори, якщо їх не було.\n"
             "5) Для символічних: вплітай символи й емоції в текст, не роби сухих списків.\n"
             "6) Для побутових: опиши дії й емоції, дай коротку практичну пораду.\n"
@@ -709,9 +725,9 @@ def build_interpret_prompt(struct_json: str, mode: str, lang: str) -> str:
     else:
         rubric = (
             "\nGeneration rules:\n"
-            "1) First classify: Domestic | Symbolic | Mixed.\n"
+            "1) First classify: Domestic | Romantic | Symbolic/Weird | Anxious | Conflict | Mixed.\n"
             "2) Extract key elements: actions, objects, places, characters, emotions, symbols.\n"
-            "3) Match the style (clear/no esoterics for domestic; soft/evocative for symbolic, 1–2 emojis).\n"
+            "3) Match the style: domestic/romantic — brief, warm, no esoterics; symbolic/weird — soft, evocative, weave symbols; anxious/conflict — compassionate and practical. Use 1–2 emojis.\n"
             "4) Use only real dream details. Don’t add symbols/metaphors that weren’t there.\n"
             "5) For symbolic: weave symbols and emotions into prose, no dry lists.\n"
             "6) For domestic: describe actions/emotions, give a short practical advice.\n"
