@@ -1,22 +1,23 @@
-
 FROM python:3.11-slim
 
-
-RUN apt-get update && apt-get install -y \
-    git \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tzdata git \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
+WORKDIR /app
 COPY . /app
 
 RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Do not put secrets in the image; set them as Railway Variables
+# Example Railway Variables to set in dashboard:
+#   TELEGRAM_BOT_TOKEN=<your token>
+#   GOOGLE_API_KEY=<your Gemini key>
+#   GEMINI_MODEL=gemini-1.5-flash
+#   DREAMMAP_DB=/data/dreammap.sqlite3
 
-
-ENV GOOGLE_API_KEY "ВАШ_НОВЫЙ_API_КЛЮЧ_ИЗ_GOOGLE_AI_STUDIO"
-ENV TELEGRAM_BOT_TOKEN "ТОКЕН_ВАШЕГО_ТГ_БОТА"
-ENV GEMINI_MODEL "gemini-1.5-flash"
-ENV DREAMMAP_DB "c:\Users\dasha\OneDrive\Desktop\работа\dreammap.sqlite3"
-CMD ["python", "dream.py"]
+CMD ["python", "-u", "dream.py"]
