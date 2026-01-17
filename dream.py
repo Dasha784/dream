@@ -993,11 +993,50 @@ def render_analysis_text(js: Dict[str, Any], psych: str, esoteric: str, advice: 
                     break
 
         if is_simple:
-            parts = [
-                header,
-                (psych or ""),
-                (f"Порада: {advice}" if advice else ""),
-            ]
+            # Динамічний короткий аналіз для побутових снів (UK)
+            s = (summ or "").lower()
+            names = ", ".join([c.get("name") for c in (js.get("characters") or []) if isinstance(c, dict) and c.get("name")])
+            hints: List[str] = []
+            cats: List[str] = []
+            # Одяг/оновлення
+            if any(k in s for k in ["кофта","светр","одяг","одежд","светрик","куртка","плаття","сорочка"]):
+                hints.append("Про бажання оновлення і комфортного самовираження.")
+                cats.append("clothes")
+            if any(k in s for k in ["купив","купила","купив","придбав","придбала","покуп"]):
+                hints.append("Про вибір і приміряння нового у житті.")
+                cats.append("choice")
+            if any(k in s for k in ["тесн","тісний","узкий","тугий","незручно"]):
+                hints.append("Легка невпевненість або обережність щодо змін.")
+                cats.append("comfort")
+            # Стосунки
+            if any(k in s for k in ["за руку","тримала за руку","тримались за руки","поцілував","поцілувала","обійня"]):
+                hints.append("Потреба у близькості та довірі.")
+                cats.append("relation")
+            # Робота/навчання
+            if any(k in s for k in ["іспит","екзамен","робота","начальник","презентація","запізнився","запізнилась"]):
+                hints.append("Про відповідальність і бажання впоратися з завданнями.")
+                cats.append("work")
+            # Побут
+            if any(k in s for k in ["ремонт","переїзд","черга","продукти","магазин","готувати"]):
+                hints.append("Про ритм побуту і прагнення спростити/упорядкувати.")
+                cats.append("house")
+            base = "Цей сон про повсякденне почуття і просте переживання."
+            who = f"Про {names}." if names else ""
+            core = " ".join([base, who, " ".join(hints)]).strip()
+            # Адаптивна порада
+            if advice:
+                simple_advice = advice
+            elif "relation" in cats:
+                simple_advice = "Зверни увагу на свої почуття до людини й дозволь собі тепле спілкування."
+            elif "clothes" in cats or "comfort" in cats:
+                simple_advice = "Оберігай свій комфорт: обирай те, що добре сидить і підходить тобі зараз."
+            elif "work" in cats:
+                simple_advice = "Зроби один невеликий крок у справі, яка хвилює. Дихай рівно і плануй просто."
+            elif "house" in cats:
+                simple_advice = "Сповільни побутовий ритм: наведи лад у дрібницях, щоб стало легше."
+            else:
+                simple_advice = "Зверни увагу на те, що тобі справді зручно і приємно. Не поспішай міняти себе різко."
+            parts = [header, core, f"Порада: {simple_advice}"]
         else:
             parts = [
                 header,
@@ -1053,11 +1092,49 @@ def render_analysis_text(js: Dict[str, Any], psych: str, esoteric: str, advice: 
                     break
 
         if is_simple:
-            parts = [
-                header,
-                (psych or ""),
-                (f"Совет: {advice}" if advice else ""),
-            ]
+            # Динамический короткий анализ для бытовых снов (RU)
+            s = (summ or "").lower()
+            names = ", ".join([c.get("name") for c in (js.get("characters") or []) if isinstance(c, dict) and c.get("name")])
+            hints: List[str] = []
+            cats: List[str] = []
+            # Одежда/обновление
+            if any(k in s for k in ["кофта","свитер","одежд","платье","рубашка","куртка","юбка","пальто"]):
+                hints.append("Желание обновления и комфортного самовыражения.")
+                cats.append("clothes")
+            if any(k in s for k in ["купил","купила","купить","покуп","примерил","примерила","взял","взяла"]):
+                hints.append("Тема выбора и примерки нового в жизни.")
+                cats.append("choice")
+            if any(k in s for k in ["тесн","узка","узкий","тугой","жмёт","жмет","неудобно"]):
+                hints.append("Небольшая неуверенность или сомнение в текущем выборе.")
+                cats.append("comfort")
+            # Отношения
+            if any(k in s for k in ["за руку","держались за руку","взял за руку","взяла за руку","поцелов","обнял","обняла","встретил","встретила"]):
+                hints.append("Потребность в близости и доверии.")
+                cats.append("relation")
+            # Работа/учёба
+            if any(k in s for k in ["экзамен","работа","начальник","презентация","опоздал","опоздала","дедлайн"]):
+                hints.append("Про ответственность и желание справиться с задачами.")
+                cats.append("work")
+            # Быт
+            if any(k in s for k in ["ремонт","переезд","очередь","продукты","магазин","готовил","готовила"]):
+                hints.append("Про ритм быта и стремление упростить/навести порядок.")
+                cats.append("house")
+            base = "Сон про повседневное чувство и простое переживание."
+            who = f"Про {names}." if names else ""
+            core = " ".join([base, who, " ".join(hints)]).strip()
+            if advice:
+                simple_advice = advice
+            elif "relation" in cats:
+                simple_advice = "Обрати внимание на свои чувства к человеку. Дай себе чуть больше тепла и ясности."
+            elif "clothes" in cats or "comfort" in cats:
+                simple_advice = "Выбирай то, что сидит комфортно сейчас. Не гони себя в неудобные рамки."
+            elif "work" in cats:
+                simple_advice = "Сделай один небольшой шаг по делу. Упростить план — тоже шаг."
+            elif "house" in cats:
+                simple_advice = "Замедли ритм быта: порядок в мелочах снизит напряжение."
+            else:
+                simple_advice = "Обрати внимание на комфорт и свои реальные чувства. Не спеши с резкими изменениями."
+            parts = [header, core, f"Совет: {simple_advice}"]
         else:
             parts = [
                 header,
@@ -1108,11 +1185,49 @@ def render_analysis_text(js: Dict[str, Any], psych: str, esoteric: str, advice: 
                     break
 
         if is_simple:
-            parts = [
-                header,
-                (psych or ""),
-                (f"Advice: {advice}" if advice else ""),
-            ]
+            # Dynamic concise analysis for domestic dreams (EN)
+            s = (summ or "").lower()
+            names = ", ".join([c.get("name") for c in (js.get("characters") or []) if isinstance(c, dict) and c.get("name")])
+            hints: List[str] = []
+            cats: List[str] = []
+            # Clothes/renewal
+            if any(k in s for k in ["sweater","hoodie","shirt","dress","jacket","coat","skirt","clothes"]):
+                hints.append("A wish for renewal and comfortable self-expression.")
+                cats.append("clothes")
+            if any(k in s for k in ["bought","buy","purchase","purchased","tried on","try on"]):
+                hints.append("A theme of choosing and trying something new.")
+                cats.append("choice")
+            if any(k in s for k in ["tight","snug","narrow","uncomfortable"]):
+                hints.append("A slight uncertainty or hesitation about the current choice.")
+                cats.append("comfort")
+            # Relationships
+            if any(k in s for k in ["held hands","hand in hand","hug","kiss","met","meeting"]):
+                hints.append("A need for closeness and trust.")
+                cats.append("relation")
+            # Work/study
+            if any(k in s for k in ["exam","test","work","boss","presentation","late","deadline"]):
+                hints.append("Responsibility and wish to handle tasks well.")
+                cats.append("work")
+            # Household
+            if any(k in s for k in ["repair","move","moving","queue","groceries","store","cooking"]):
+                hints.append("Daily rhythm and a wish to simplify/organize.")
+                cats.append("house")
+            base = "A simple everyday feeling and concern."
+            who = f"About {names}." if names else ""
+            core = " ".join([base, who, " ".join(hints)]).strip()
+            if advice:
+                simple_advice = advice
+            elif "relation" in cats:
+                simple_advice = "Notice your feelings toward the person and allow warm, clear contact."
+            elif "clothes" in cats or "comfort" in cats:
+                simple_advice = "Choose what fits comfortably now. Avoid forcing yourself into tight frames."
+            elif "work" in cats:
+                simple_advice = "Take one small step on the task. Simplifying the plan counts too."
+            elif "house" in cats:
+                simple_advice = "Slow the household rhythm: tidying small things reduces tension."
+            else:
+                simple_advice = "Notice what truly feels comfortable. Avoid rushing into big changes."
+            parts = [header, core, f"Advice: {simple_advice}"]
         else:
             parts = [
                 header,
