@@ -1,0 +1,21 @@
+# Игнорировать ненужные файлы при сборке Docker образа
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+*.sqlite3
+*.db
+*.log
+.git/
+.gitignore
+.vscode/
+.idea/
+*.md
+.env
+config.json
+# Но оставить config.py в образе
