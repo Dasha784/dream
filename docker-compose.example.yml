@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  dream-bot:
+    build: .
+    container_name: dream-bot
+    restart: unless-stopped
+    environment:
+      # Задайте эти переменные через .env файл или здесь
+      - TELEGRAM_BOT_TOKEN=${8468925466:AAEIv1fN1cIB2rxJvbed1WbeZ78R1nku6cc}
+      - GOOGLE_API_KEY=${AIzaSyCY-Jcknnpzvzc9h_9vkRRhofLjjAN_6PQ}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+      - DREAMMAP_DB=/app/data/dreammap.sqlite3
+    volumes:
+      # Сохраняем базу данных на хосте
+      - ./data:/app/data
+    # Если нужны логи
+    # logging:
+    #   driver: "json-file"
+    #   options:
+    #     max-size: "10m"
+    #     max-file: "3"
