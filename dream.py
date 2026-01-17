@@ -682,15 +682,28 @@ async def call_gemini(prompt: str) -> str:
                 "max_output_tokens": 1024,
             },
         )
-        # New client returns an object with output text accessible via 'text' or 'candidates'
+        # Try common accessors
         text = getattr(resp, "text", None)
         if text:
             return text
-        # Fallback: try to extract from candidates
+        # Extract from candidates/parts
         try:
-            return resp.candidates[0].content.parts[0].text
+            candidates = getattr(resp, "candidates", None) or []
+            parts_text: list[str] = []
+            for cand in candidates:
+                content = getattr(cand, "content", None)
+                if not content:
+                    continue
+                parts = getattr(content, "parts", None) or []
+                for p in parts:
+                    t = getattr(p, "text", None)
+                    if t:
+                        parts_text.append(t)
+            if parts_text:
+                return "\n".join(parts_text)
         except Exception:
-            return ""
+            pass
+        return ""
     except Exception:
         return ""
 
