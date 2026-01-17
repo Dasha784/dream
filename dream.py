@@ -4,7 +4,9 @@ import json
 import sqlite3
 import re
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Any, Dict, List, Optional, Tuple
+import random
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
@@ -17,8 +19,8 @@ except Exception:
     genai = None 
 
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8468925466:AAEIv1fN1cIB2rxJvbed1WbeZ78R1nku6cc")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyAFzpmXWjJpEj5VokanRhobA9aHL0ip87o")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
 if not TELEGRAM_BOT_TOKEN:
@@ -116,6 +118,27 @@ def db_migrate() -> None:
         cur.execute("ALTER TABLE users ADD COLUMN last_daily_sent TEXT")
     except Exception:
         pass
+    # Timezone-aware notification columns
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN timezone TEXT DEFAULT 'Europe/Kyiv'")
+    except Exception:
+        pass
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN morning_hour INTEGER DEFAULT 8")
+    except Exception:
+        pass
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN evening_hour INTEGER DEFAULT 20")
+    except Exception:
+        pass
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN last_morning_sent TEXT")
+    except Exception:
+        pass
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN last_evening_sent TEXT")
+    except Exception:
+        pass
     conn.commit()
     conn.close()
 
@@ -131,6 +154,14 @@ def set_language_for_user(tg_user_id: int, language: str) -> None:
     conn = db_conn()
     cur = conn.cursor()
     cur.execute("UPDATE users SET language=? WHERE tg_user_id=?", (language, tg_user_id))
+    conn.commit()
+    conn.close()
+
+
+def set_timezone_for_user(tg_user_id: int, tz: str) -> None:
+    conn = db_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET timezone=? WHERE tg_user_id=?", (tz, tg_user_id))
     conn.commit()
     conn.close()
 
@@ -376,6 +407,93 @@ def compat_menu_kb(lang: str) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
+def settings_timezone_kb(lang: str) -> InlineKeyboardMarkup:
+    if lang == "uk":
+        items = [("Київ (Europe/Kyiv)", "settings:tz:Europe/Kyiv"), ("Париж (Europe/Paris)", "settings:tz:Europe/Paris"), ("Лондон (Europe/London)", "settings:tz:Europe/London")]
+    elif lang == "ru":
+        items = [("Киев (Europe/Kyiv)", "settings:tz:Europe/Kyiv"), ("Париж (Europe/Paris)", "settings:tz:Europe/Paris"), ("Лондон (Europe/London)", "settings:tz:Europe/London")]
+    else:
+        items = [("Kyiv (Europe/Kyiv)", "settings:tz:Europe/Kyiv"), ("Paris (Europe/Paris)", "settings:tz:Europe/Paris"), ("London (Europe/London)", "settings:tz:Europe/London")]
+    kb = InlineKeyboardBuilder()
+    for text, data in items:
+        kb.button(text=text, callback_data=data)
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+CITY_TO_TZ = {
+    # Europe
+    "kyiv": "Europe/Kyiv",
+    "kiev": "Europe/Kyiv",
+    "paris": "Europe/Paris",
+    "london": "Europe/London",
+    "berlin": "Europe/Berlin",
+    "warsaw": "Europe/Warsaw",
+    "madrid": "Europe/Madrid",
+    "rome": "Europe/Rome",
+    "prague": "Europe/Prague",
+    "vienna": "Europe/Vienna",
+    # Americas
+    "newyork": "America/New_York",
+    "new york": "America/New_York",
+    "losangeles": "America/Los_Angeles",
+    "los angeles": "America/Los_Angeles",
+    "toronto": "America/Toronto",
+    # Asia
+    "tokyo": "Asia/Tokyo",
+    "seoul": "Asia/Seoul",
+    "singapore": "Asia/Singapore",
+}
+
+
+MORNING_VARIANTS = {
+    "ru": [
+        "Доброе утро ☀️ Что приснилось сегодня? Хотите нежный прогноз на день?",
+        "Просыпаемся мягко ☀️ Поделитесь сном — и заглянем в энергии дня ✨",
+        "С новыми силами! ☀️ О чём шептал сон этой ночью? Готовы к лёгкому раскладу дня?",
+    ],
+    "uk": [
+        "Добрий ранок ☀️ Що наснилося сьогодні? Хочеш м’який прогноз на день?",
+        "Прокидаймось ніжно ☀️ Поділися сном — і зазирнемо в енергії дня ✨",
+        "З новими силами! ☀️ Про що шептав сон цієї ночі? Готовий(а) до легкого розкладу дня?",
+    ],
+    "en": [
+        "Good morning ☀️ What did you dream about? Want a gentle forecast for your day?",
+        "Wake softly ☀️ Share your dream — let’s peek into today’s energies ✨",
+        "Fresh start! ☀️ What whispered in your dreams? Ready for a light day preview?",
+    ],
+}
+
+
+EVENING_VARIANTS = {
+    "ru": [
+        "Как прошёл твой день? 🌙 Пара строк — и добавлю в дневник снов.",
+        "Вечерняя пауза 🌙 Поделись ощущениями: что было главным сегодня?",
+        "Тихий вечер 🌙 О чём было твоё состояние днём? Запишем аккуратно.",
+    ],
+    "uk": [
+        "Як минув твій день? 🌙 Кілька рядків — і додам у щоденник снів.",
+        "Вечірня пауза 🌙 Поділися відчуттями: що було головним сьогодні?",
+        "Тихий вечір 🌙 Про що був твій стан вдень? Запишемо дбайливо.",
+    ],
+    "en": [
+        "How was your day? 🌙 A few lines — I’ll add it to your dream diary.",
+        "Evening pause 🌙 Share your feelings: what stood out today?",
+        "Soft night 🌙 What did your day feel like? Let’s note it gently.",
+    ],
+}
+
+
+def morning_text(lang: str) -> str:
+    arr = MORNING_VARIANTS.get(lang) or MORNING_VARIANTS["en"]
+    return random.choice(arr)
+
+
+def evening_text(lang: str) -> str:
+    arr = EVENING_VARIANTS.get(lang) or EVENING_VARIANTS["en"]
+    return random.choice(arr)
+
+
 def interpret_menu_kb(lang: str) -> InlineKeyboardMarkup:
     if lang == "uk":
         items = [("Mixed", "interpret:mixed"), ("Psychological", "interpret:psych"), ("Custom", "interpret:custom"), ("Зробити режимом за замовч.", "interpret:set_mode")]
@@ -420,22 +538,44 @@ def diary_menu_kb(lang: str) -> InlineKeyboardMarkup:
 
 def settings_menu_kb(lang: str) -> InlineKeyboardMarkup:
     if lang == "uk":
-        items = [("Режим за замовч.", "settings:mode"), ("Увімкнути нотиф.", "settings:notifications_on"), ("Вимкнути нотиф.", "settings:notifications_off"), ("Мова RU", "settings:language:ru"), ("Мова UK", "settings:language:uk"), ("Language EN", "settings:language:en")]
+        items = [("Режим за замовч.", "settings:mode"), ("Увімкнути нотиф.", "settings:notifications_on"), ("Вимкнути нотиф.", "settings:notifications_off"), ("Мови", "settings:languages"), ("Часовий пояс", "settings:timezone")]
     elif lang == "ru":
-        items = [("Режим по умолч.", "settings:mode"), ("Включить уведомл.", "settings:notifications_on"), ("Выключить уведомл.", "settings:notifications_off"), ("Язык RU", "settings:language:ru"), ("Мова UK", "settings:language:uk"), ("Language EN", "settings:language:en")]
+        items = [("Режим по умолч.", "settings:mode"), ("Включить уведомл.", "settings:notifications_on"), ("Выключить уведомл.", "settings:notifications_off"), ("Языки", "settings:languages"), ("Часовой пояс", "settings:timezone")]
     else:
-        items = [("Default mode", "settings:mode"), ("Enable notif.", "settings:notifications_on"), ("Disable notif.", "settings:notifications_off"), ("Language RU", "settings:language:ru"), ("Language UK", "settings:language:uk"), ("Language EN", "settings:language:en")]
+        items = [("Default mode", "settings:mode"), ("Enable notif.", "settings:notifications_on"), ("Disable notif.", "settings:notifications_off"), ("Languages", "settings:languages"), ("Timezone", "settings:timezone")]
     kb = InlineKeyboardBuilder()
     for text, data in items:
         kb.button(text=text, callback_data=data)
     kb.adjust(2)
     return kb.as_markup()
 
+
+def settings_languages_kb(lang: str) -> InlineKeyboardMarkup:
+    if lang == "uk":
+        items = [("Українська", "settings:language:uk"), ("Русский", "settings:language:ru"), ("English", "settings:language:en")]
+    elif lang == "ru":
+        items = [("Русский", "settings:language:ru"), ("Українська", "settings:language:uk"), ("English", "settings:language:en")]
+    else:
+        items = [("English", "settings:language:en"), ("Русский", "settings:language:ru"), ("Українська", "settings:language:uk")]
+    kb = InlineKeyboardBuilder()
+    for text, data in items:
+        kb.button(text=text, callback_data=data)
+    kb.adjust(1)
+    return kb.as_markup()
+
 def gemini_client():
     if not GOOGLE_API_KEY or genai is None:
         return None
     try:
-        return genai.GenerativeModel(GEMINI_MODEL)
+        return genai.GenerativeModel(
+            GEMINI_MODEL,
+            generation_config={
+                "temperature": 0.9,
+                "top_p": 0.9,
+                "top_k": 40,
+                "max_output_tokens": 1024,
+            },
+        )
     except Exception:
         return None
 
@@ -463,6 +603,23 @@ def build_struct_prompt(dream_text: str, lang: str) -> str:
     )
 
 
+def build_style_header(lang: str) -> str:
+    if lang == "uk":
+        return (
+            "Ти пишеш як уважний консультант-таролог/психолог. Не згадуй ШІ. Без дисклеймерів. "
+            "Стиль: теплий, образний, але лаконічний. Короткі абзаци, без списків, якщо не просять."
+        )
+    if lang == "ru":
+        return (
+            "Ты пишешь как внимательный таролог/психолог. Не упоминай ИИ. Без дисклеймеров. "
+            "Стиль: тёплый, образный, но лаконичный. Короткие абзацы, без списков, если не просят."
+        )
+    return (
+        "Write like a caring tarot reader/psychologist. Do not mention AI. No disclaimers. "
+        "Tone: warm, evocative, concise. Short paragraphs, avoid lists unless asked."
+    )
+
+
 def build_interpret_prompt(struct_json: str, mode: str, lang: str) -> str:
     if lang == "uk":
         base = "На основі структури дай: 1) Психологічну інтерпретацію 2) Езотеричну (м’яко) 3) Пораду/урок (2–3 пункти)."
@@ -470,12 +627,40 @@ def build_interpret_prompt(struct_json: str, mode: str, lang: str) -> str:
         base = "На основе структуры дай: 1) Психологическую интерпретацию 2) Эзотерическую (мягко) 3) Совет/урок (2–3 пункта)."
     else:
         base = "Based on the structure, provide: 1) Psychological interpretation 2) Esoteric (gently) 3) Advice/lesson (2–3 bullets)."
+    header = build_style_header(lang)
     return (
-        f"{base}\n"
+        f"{header}\n\n{base}\n"
         f"Mode: {mode}.\n"
         f"Structure (JSON): {struct_json}\n"
         "Return a compact response with three labeled sections: PSYCH, ESOTERIC, ADVICE."
     )
+
+
+def build_tarot_prompt(spread: int, topic: str, lang: str, by_dream: bool = False) -> str:
+    header = build_style_header(lang)
+    names_uk = {1: "1 карта (порада)", 3: "3 карти (минуле/теперішнє/майбутнє)", 5: "5 карт (глибокий аналіз)"}
+    names_ru = {1: "1 карта (совет)", 3: "3 карты (прошлое/настоящее/будущее)", 5: "5 карт (глубокий анализ)"}
+    names_en = {1: "1 card (advice)", 3: "3 cards (past/present/future)", 5: "5 cards (deep analysis)"}
+    name = (names_uk if lang == "uk" else names_ru if lang == "ru" else names_en).get(max(1, min(5, spread)), names_en[3])
+    if lang == "uk":
+        base = (
+            f"Створи розклад Таро: {name}. Тема: {topic}. "
+            + ("Привʼяжи значення карт до символів сну, емоцій, мотивів. " if by_dream else "")
+            + "Дай людську, мʼяку, але чітку інтерпретацію; коротко, 2–3 абзаци."
+        )
+    elif lang == "ru":
+        base = (
+            f"Сделай расклад Таро: {name}. Тема: {topic}. "
+            + ("Свяжи значения карт с символами сна, эмоциями, мотивами. " if by_dream else "")
+            + "Дай человеческую, мягкую, но ясную интерпретацию; коротко, 2–3 абзаца."
+        )
+    else:
+        base = (
+            f"Create a Tarot spread: {name}. Topic: {topic}. "
+            + ("Bind card meanings to dream symbols, emotions, motifs. " if by_dream else "")
+            + "Provide a human, gentle yet clear interpretation; concise, 2–3 paragraphs."
+        )
+    return f"{header}\n\n{base}"
 
 
 async def call_gemini(prompt: str) -> str:
@@ -611,15 +796,16 @@ dp = Dispatcher()
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
-    lang = detect_lang(message.text or message.from_user.language_code or "")
+    initial_lang = detect_lang(message.text or message.from_user.language_code or "")
+    get_or_create_user(message.from_user.id, message.from_user.username, initial_lang)
+    lang = get_lang_for_user(message.from_user.id, initial_lang)
     ui = choose_ui_text(lang)
-    get_or_create_user(message.from_user.id, message.from_user.username, lang)
     await message.answer(ui["hello"], reply_markup=main_menu_kb(lang))
 
 
 @dp.message(Command("mode"))
 async def cmd_mode(message: Message):
-    lang = detect_lang(message.text or message.from_user.language_code or "")
+    lang = get_lang_for_user(message.from_user.id, detect_lang(message.text or ""))
     args = (message.text or "").split(maxsplit=1)
     if len(args) < 2:
         if lang == "uk":
@@ -639,14 +825,14 @@ async def cmd_mode(message: Message):
 
 @dp.message(Command("dream"))
 async def cmd_dream(message: Message):
-    lang = detect_lang(message.text or message.from_user.language_code or "")
+    lang = get_lang_for_user(message.from_user.id, detect_lang(message.text or ""))
     ui = choose_ui_text(lang)
     await message.answer(ui["prompt_dream"])
 
 
 @dp.message(Command("stats"))
 async def cmd_stats(message: Message):
-    lang = detect_lang(message.text or message.from_user.language_code or "")
+    lang = get_lang_for_user(message.from_user.id, detect_lang(message.text or ""))
     ui = choose_ui_text(lang)
     user_id = get_or_create_user(message.from_user.id, message.from_user.username, lang)
     st = get_user_stats(user_id)
@@ -666,23 +852,43 @@ async def cmd_stats(message: Message):
 
 @dp.message(Command("settings"))
 async def cmd_settings(message: Message):
-    lang = detect_lang(message.text or message.from_user.language_code or "")
+    lang = get_lang_for_user(message.from_user.id, detect_lang(message.text or ""))
     u = get_user(message.from_user.id)
     mode = (u["default_mode"] if u and "default_mode" in u.keys() else "Mixed") if u else "Mixed"
     notif = (u["notifications_enabled"] if u and "notifications_enabled" in u.keys() else 0) if u else 0
-    hour = (u["daily_hour"] if u and "daily_hour" in u.keys() else 9) if u else 9
+    tz = (u["timezone"] if u and "timezone" in u.keys() else "Europe/Kyiv") if u else "Europe/Kyiv"
     prem = user_is_premium(message.from_user.id)
     if lang == "uk":
-        await message.answer(f"Налаштування:\nРежим: {mode}\nСповіщення: {'on' if notif else 'off'} {hour}:00\nПреміум: {'так' if prem else 'ні'}")
+        await message.answer(f"Налаштування:\nРежим: {mode}\nСповіщення: {'on' if notif else 'off'}\nЧасовий пояс: {tz}\nРанкове: 08:00, Вечірнє: 20:00\nПреміум: {'так' if prem else 'ні'}", reply_markup=settings_menu_kb(lang))
     elif lang == "ru":
-        await message.answer(f"Настройки:\nРежим: {mode}\nУведомления: {'on' if notif else 'off'} {hour}:00\nПремиум: {'да' if prem else 'нет'}")
+        await message.answer(f"Настройки:\nРежим: {mode}\nУведомления: {'on' if notif else 'off'}\nЧасовой пояс: {tz}\nУтром: 08:00, Вечером: 20:00\nПремиум: {'да' if prem else 'нет'}", reply_markup=settings_menu_kb(lang))
     else:
-        await message.answer(f"Settings:\nMode: {mode}\nNotifications: {'on' if notif else 'off'} {hour}:00\nPremium: {'yes' if prem else 'no'}")
+        await message.answer(f"Settings:\nMode: {mode}\nNotifications: {'on' if notif else 'off'}\nTimezone: {tz}\nMorning: 08:00, Evening: 20:00\nPremium: {'yes' if prem else 'no'}", reply_markup=settings_menu_kb(lang))
+
+
+@dp.message(Command("tz"))
+async def cmd_tz(message: Message):
+    lang = get_lang_for_user(message.from_user.id, detect_lang(message.text or ""))
+    args = (message.text or "").split(maxsplit=1)
+    if len(args) < 2:
+        prompt = "Надішліть IANA часовий пояс, напр.: /tz Europe/Paris" if lang == "uk" else ("Пришлите IANA таймзону, например: /tz Europe/Paris" if lang == "ru" else "Send IANA timezone, e.g.: /tz Europe/Paris")
+        await message.answer(prompt)
+        return
+    tz = args[1].strip()
+    try:
+        _ = ZoneInfo(tz)
+    except Exception:
+        bad = "Невірний часовий пояс" if lang == "uk" else ("Неверный часовой пояс" if lang == "ru" else "Invalid timezone")
+        await message.answer(f"{bad}. Examples: Europe/Kyiv, Europe/Paris, Europe/London")
+        return
+    set_timezone_for_user(message.from_user.id, tz)
+    ok = "Оновлено." if lang == "uk" else ("Обновлено." if lang == "ru" else "Updated.")
+    await message.answer(f"{ok} Timezone = {tz}")
 
 
 @dp.message(Command("ask"))
 async def cmd_ask(message: Message):
-    lang = detect_lang(message.text or message.from_user.language_code or "")
+    lang = get_lang_for_user(message.from_user.id, detect_lang(message.text or ""))
     ui = choose_ui_text(lang)
     question = (message.text or "").split(maxsplit=1)
     if len(question) < 2:
@@ -765,7 +971,7 @@ def parse_style_and_text(s: str) -> Tuple[Optional[str], str]:
 
 @dp.message(Command("image"))
 async def cmd_image(message: Message):
-    lang = detect_lang(message.text or message.from_user.language_code or "")
+    lang = get_lang_for_user(message.from_user.id, detect_lang(message.text or ""))
     ui = choose_ui_text(lang)
     txt = (message.text or "").split(maxsplit=1)
     if len(txt) < 2:
@@ -832,7 +1038,7 @@ def normalize_mode(m: Optional[str]) -> str:
 
 @dp.message(Command("history"))
 async def cmd_history(message: Message):
-    lang = detect_lang(message.text or message.from_user.language_code or "")
+    lang = get_lang_for_user(message.from_user.id, detect_lang(message.text or ""))
     user_id = get_or_create_user(message.from_user.id, message.from_user.username, lang)
     conn = db_conn()
     cur = conn.cursor()
@@ -863,7 +1069,7 @@ async def cmd_history(message: Message):
 
 @dp.message(Command("tarot"))
 async def cmd_tarot(message: Message):
-    lang = detect_lang(message.text or message.from_user.language_code or "")
+    lang = get_lang_for_user(message.from_user.id, detect_lang(message.text or ""))
     if not GOOGLE_API_KEY or genai is None:
         await message.answer(choose_ui_text(lang)["no_api"])
         return
@@ -875,12 +1081,7 @@ async def cmd_tarot(message: Message):
         topic = args[2] if len(args) >= 3 else ""
     elif len(args) >= 2:
         topic = args[1]
-    if lang == "uk":
-        prompt = f"Створи розклад Таро на {spread} карт(и) з темою: {topic}. Опиши карти й інтерпретацію."
-    elif lang == "ru":
-        prompt = f"Сделай расклад Таро на {spread} карт(ы) по теме: {topic}. Опиши карты и интерпретацию."
-    else:
-        prompt = f"Create a Tarot spread of {spread} cards on: {topic}. Describe cards and interpretation."
+    prompt = build_tarot_prompt(spread, topic, lang, by_dream=False)
     await message.chat.do("typing")
     out = await call_gemini(prompt)
     await message.answer(out or "")
@@ -888,7 +1089,7 @@ async def cmd_tarot(message: Message):
 
 @dp.message(Command("compat"))
 async def cmd_compat(message: Message):
-    lang = detect_lang(message.text or message.from_user.language_code or "")
+    lang = get_lang_for_user(message.from_user.id, detect_lang(message.text or ""))
     if not GOOGLE_API_KEY or genai is None:
         await message.answer(choose_ui_text(lang)["no_api"])
         return
@@ -915,7 +1116,7 @@ async def cmd_compat(message: Message):
 
 @dp.message(Command("daily"))
 async def cmd_daily(message: Message):
-    lang = detect_lang(message.text or message.from_user.language_code or "")
+    lang = get_lang_for_user(message.from_user.id, detect_lang(message.text or ""))
     args = (message.text or "").split()
     enabled = None
     hour = None
@@ -954,9 +1155,24 @@ async def cmd_daily(message: Message):
 @dp.message(F.text & ~F.text.startswith("/"))
 async def handle_free_text(message: Message):
     user_text = message.text or ""
-    lang = detect_lang(user_text or message.from_user.language_code or "")
+    lang = get_lang_for_user(message.from_user.id, detect_lang(user_text or ""))
     ui = choose_ui_text(lang)
     user_id = get_or_create_user(message.from_user.id, message.from_user.username, lang)
+
+    # If user sent a city name in English, map to timezone and confirm
+    txt_low = user_text.strip().lower()
+    if txt_low in CITY_TO_TZ:
+        tz = CITY_TO_TZ[txt_low]
+        set_timezone_for_user(message.from_user.id, tz)
+        if lang == "uk":
+            await message.answer(f"Часовий пояс оновлено: {tz} ✅")
+        elif lang == "ru":
+            await message.answer(f"Часовой пояс обновлён: {tz} ✅")
+        else:
+            await message.answer(f"Timezone updated: {tz} ✅")
+        # Continue to show settings menu for convenience
+        await message.answer(menu_labels(lang)["settings"], reply_markup=settings_menu_kb(lang))
+        return
 
     # Reply menu buttons: open corresponding inline submenus
     ml = menu_labels(lang)
@@ -1037,8 +1253,18 @@ async def cb_interpret(call: CallbackQuery):
     lang = get_lang_for_user(call.from_user.id, detect_lang(call.message.text or ""))
     parts = call.data.split(":")
     action = parts[1] if len(parts) > 1 else ""
-    if action == "set_mode":
-     
+    if action in ("mixed", "psych", "custom"):
+        mode = "Mixed" if action == "mixed" else ("Psychological" if action == "psych" else "Custom")
+        set_user_mode(call.from_user.id, mode)
+        if lang == "uk":
+            txt = f"Режим за замовчуванням встановлено: {mode} ✅ Надішліть сон — я проаналізую у цьому стилі."
+        elif lang == "ru":
+            txt = f"Режим по умолчанию установлен: {mode} ✅ Пришлите сон — я проанализирую в этом стиле."
+        else:
+            txt = f"Default mode set: {mode} ✅ Send a dream — I’ll analyze in this style."
+        await call.message.answer(txt)
+    elif action == "set_mode":
+        # ask to choose default mode via inline again or suggest /mode
         if lang == "uk":
             txt = "Використай /mode Mixed | Psychological | Custom — щоб встановити режим за замовчуванням."
         elif lang == "ru":
@@ -1047,7 +1273,7 @@ async def cb_interpret(call: CallbackQuery):
             txt = "Use /mode Mixed | Psychological | Custom to set the default mode."
         await call.message.answer(txt)
     else:
-     
+        # guide to send a dream now; analysis uses saved default mode
         if lang == "uk":
             txt = "Надішли текст сну одним повідомленням — я проаналізую. Щоб зберегти режим, скористайся /mode."
         elif lang == "ru":
@@ -1086,7 +1312,7 @@ async def cb_diary(call: CallbackQuery):
     action = call.data.split(":", 1)[1]
     user_id = get_or_create_user(call.from_user.id, call.from_user.username, lang)
     if action == "history":
-     
+        # reuse logic from /history
         conn = db_conn()
         cur = conn.cursor()
         cur.execute(
@@ -1151,22 +1377,56 @@ async def cb_settings(call: CallbackQuery):
     action = parts[1] if len(parts) > 1 else ""
     if action == "notifications_on":
         set_notifications(call.from_user.id, 1)
-        await call.message.answer("Notifications ON" if lang == "en" else ("Уведомления включены" if lang == "ru" else "Сповіщення увімкнено"))
+        if lang == "uk":
+            await call.message.answer("Сповіщення увімкнено ✅\n\nЩо це дає:\n– Ранком (08:00) — ніжне запитання про сон і короткий настрій дня ☀️\n– Ввечері (20:00) — запитання як минув день 🌙\n\nНапишіть англійською назву міста (наприклад, Kyiv, Paris, London) — я підлаштую час.")
+        elif lang == "ru":
+            await call.message.answer("Уведомления включены ✅\n\nЧто это даёт:\n– Утром (08:00) — нежный вопрос о сне и мягкий настрой дня ☀️\n– Вечером (20:00) — вопрос как прошёл день 🌙\n\nНапишите на английском название города (например, Kyiv, Paris, London) — я подстрою время. Или используйте /tz Europe/Paris")
+        else:
+            await call.message.answer("Notifications enabled ✅\n\nYou’ll get:\n– Morning (08:00) — a gentle dream check-in and day mood ☀️\n– Evening (20:00) — how your day went 🌙\n\nSend your city in English (e.g., Kyiv, Paris, London), and I’ll set your timezone. Or use /tz Europe/Paris")
     elif action == "notifications_off":
         set_notifications(call.from_user.id, 0)
-        await call.message.answer("Notifications OFF" if lang == "en" else ("Уведомления выключены" if lang == "ru" else "Сповіщення вимкнено"))
+        if lang == "uk":
+            await call.message.answer("Сповіщення вимкнено ❌\nМи більше не писатимемо першими. Ви завжди можете повернути їх у Налаштуваннях.")
+        elif lang == "ru":
+            await call.message.answer("Уведомления выключены ❌\nМы больше не будем писать первыми. Вы всегда можете включить их в Настройках.")
+        else:
+            await call.message.answer("Notifications disabled ❌\nWe won’t text you first anymore. You can re-enable them in Settings anytime.")
     elif action == "mode":
- 
+        # Suggest using /mode to persist
         if lang == "uk":
             await call.message.answer("Використай команду /mode Mixed | Psychological | Custom")
         elif lang == "ru":
             await call.message.answer("Используй команду /mode Mixed | Psychological | Custom")
         else:
             await call.message.answer("Use /mode Mixed | Psychological | Custom")
+    elif action == "languages":
+        await call.message.answer(
+            "Виберіть мову:" if lang == "uk" else ("Выберите язык:" if lang == "ru" else "Choose a language:"),
+            reply_markup=settings_languages_kb(lang),
+        )
+    elif action == "timezone":
+        note = "Виберіть часовий пояс або використайте /tz" if lang == "uk" else ("Выберите часовой пояс или используйте /tz" if lang == "ru" else "Choose a timezone or use /tz")
+        await call.message.answer(note, reply_markup=settings_timezone_kb(lang))
     elif action == "language" and len(parts) >= 3:
         code = parts[2]
         set_language_for_user(call.from_user.id, code)
-        await call.message.answer("Language updated." if code == "en" else ("Язык обновлён." if code == "ru" else "Мову оновлено."), reply_markup=main_menu_kb(code))
+        # Re-render confirmation + main menu in selected language
+        confirm = {
+            "uk": "Мову оновлено.",
+            "ru": "Язык обновлён.",
+            "en": "Language updated.",
+        }.get(code, "Language updated.")
+        await call.message.answer(confirm, reply_markup=main_menu_kb(code))
+    elif action == "tz" and len(parts) >= 3:
+        tz = parts[2]
+        try:
+            _ = ZoneInfo(tz)
+            set_timezone_for_user(call.from_user.id, tz)
+            msg = "Часовий пояс оновлено." if lang == "uk" else ("Часовой пояс обновлён." if lang == "ru" else "Timezone updated.")
+            await call.message.answer(f"{msg} {tz}")
+        except Exception:
+            bad = "Невірний часовий пояс" if lang == "uk" else ("Неверный часовой пояс" if lang == "ru" else "Invalid timezone")
+            await call.message.answer(f"{bad}.")
     await call.answer()
 
 
@@ -1176,39 +1436,44 @@ async def main() -> None:
     async def notify_loop():
         while True:
             try:
-                now = datetime.utcnow()
-                date_str = now.date().isoformat()
+                now_utc = datetime.utcnow()
                 conn = db_conn()
                 cur = conn.cursor()
-                cur.execute("SELECT tg_user_id, daily_hour, last_daily_sent FROM users WHERE notifications_enabled=1")
+                cur.execute("SELECT tg_user_id, language, timezone, last_morning_sent, last_evening_sent FROM users WHERE notifications_enabled=1")
                 rows = cur.fetchall()
                 conn.close()
                 for r in rows:
                     tg_id = r[0]
-                    hour = r[1] if r[1] is not None else 9
-                    last = r[2]
-                    if now.hour == int(hour) and last != date_str:
-                        lang = "ru"
-                        u = get_user(tg_id)
-                        if u and u.get("language"):
-                            lang = u.get("language")
-                        if not GOOGLE_API_KEY or genai is None:
-                            continue
-                        if lang == "uk":
-                            prompt = "Щоденна порада/карта дня для користувача. Коротко, бережно, 2–3 речення."
-                        elif lang == "ru":
-                            prompt = "Ежедневный совет/карта дня для пользователя. Коротко, бережно, 2–3 предложения."
-                        else:
-                            prompt = "Daily tip/card for the user. Short, gentle, 2–3 sentences."
-                        txt = await call_gemini(prompt)
+                    lang = r[1] or "ru"
+                    tz = r[2] or "Europe/Kyiv"
+                    last_m = r[3]
+                    last_e = r[4]
+                    try:
+                        local_now = now_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo(tz))
+                    except Exception:
+                        local_now = now_utc
+                    today = local_now.date().isoformat()
+                    if local_now.hour == 8 and last_m != today:
+                        text = morning_text(lang)
                         try:
-                            await bot.send_message(chat_id=tg_id, text=txt or "Have a gentle day.")
-                            mark_daily_sent(tg_id, date_str)
+                            await bot.send_message(chat_id=tg_id, text=text)
+                            conn2 = db_conn(); cur2 = conn2.cursor()
+                            cur2.execute("UPDATE users SET last_morning_sent=? WHERE tg_user_id=?", (today, tg_id))
+                            conn2.commit(); conn2.close()
+                        except Exception:
+                            pass
+                    if local_now.hour == 20 and last_e != today:
+                        text = evening_text(lang)
+                        try:
+                            await bot.send_message(chat_id=tg_id, text=text)
+                            conn3 = db_conn(); cur3 = conn3.cursor()
+                            cur3.execute("UPDATE users SET last_evening_sent=? WHERE tg_user_id=?", (today, tg_id))
+                            conn3.commit(); conn3.close()
                         except Exception:
                             pass
             except Exception:
                 pass
-            await asyncio.sleep(600)
+            await asyncio.sleep(300)
 
     asyncio.create_task(notify_loop())
     await Dispatcher.start_polling(dp, bot)
