@@ -728,8 +728,18 @@ async def analyze_dream(text: str, mode: str, lang: str) -> Tuple[Dict[str, Any]
             "summary": "",
         }
 
+    # Fallback: если модель не дала summary, возьмем первые ~200 символов исходного текста
+    try:
+        if not (js.get("summary") or "").strip():
+            js["summary"] = (text or "").strip()[:200]
+    except Exception:
+        pass
+
     interp_prompt = build_interpret_prompt(json.dumps(js, ensure_ascii=False), mode, lang)
     interp_raw = await call_gemini(interp_prompt)
+    # Retry once if empty
+    if not interp_raw:
+        interp_raw = await call_gemini(interp_prompt)
 
     psych, esoteric, advice = "", "", ""
     if interp_raw:
