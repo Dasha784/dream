@@ -14,9 +14,9 @@ RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
 
-ENV TELEGRAM_BOT_TOKEN=8468925466:AAEIv1fN1cIB2rxJvbed1WbeZ78R1nku6cc
-ENV GOOGLE_API_KEY=AIzaSyAFzpmXWjJpEj5VokanRhobA9aHL0ip87o
-ENV DREAMMAP_DB=dreammap.sqlite3
-ENV GEMINI_MODEL=gemini-1.5-flash
 
+ENV GOOGLE_API_KEY "ВАШ_НОВЫЙ_API_КЛЮЧ_ИЗ_GOOGLE_AI_STUDIO"
+ENV TELEGRAM_BOT_TOKEN "ТОКЕН_ВАШЕГО_ТГ_БОТА"
+ENV GEMINI_MODEL "gemini-1.5-flash"
+ENV DREAMMAP_DB "c:\Users\dasha\OneDrive\Desktop\работа\dreammap.sqlite3"
 CMD ["python", "dream.py"]
