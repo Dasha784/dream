@@ -664,6 +664,30 @@ def build_interpret_prompt(struct_json: str, mode: str, lang: str) -> str:
     )
 
 
+def quick_heuristics(text: str, lang: str) -> Dict[str, Any]:
+    t = (text or "").lower()
+    symbols: List[str] = []
+    for k in [
+        "город","городе","city","дом","окно","вода","ключ","дерево","часы","свет","тень","музыка","дорога","небо"
+    ]:
+        if k in t and k not in symbols:
+            symbols.append(k)
+    themes: List[str] = []
+    if any(w in t for w in ["переход","рассвет","проснулась","проснулся","нов","дверь","key","transition","transform"]):
+        themes.append("transition")
+    if any(w in t for w in ["вода","water","волна"]):
+        themes.append("flow/emotion")
+    if any(w in t for w in ["часы","время","без стрелок","time"]):
+        themes.append("timelessness")
+    emotions: List[Dict[str, Any]] = []
+    if any(w in t for w in ["страх","тревога","боязнь","fear","anx"]):
+        emotions.append({"label": "anxiety", "score": 0.6})
+    if any(w in t for w in ["спокой","мягк","calm","тихо","gentle"]):
+        emotions.append({"label": "calm", "score": 0.7})
+    summary = (text or "").strip()[:200]
+    return {"symbols": symbols, "themes": themes, "emotions": emotions, "summary": summary}
+
+
 def build_tarot_prompt(spread: int, topic: str, lang: str, by_dream: bool = False) -> str:
     header = build_style_header(lang)
     names_uk = {1: "1 карта (порада)", 3: "3 карти (минуле/теперішнє/майбутнє)", 5: "5 карт (глибокий аналіз)"}
@@ -701,10 +725,10 @@ async def call_gemini(prompt: str) -> str:
             model=GEMINI_MODEL,
             contents=prompt,
             generation_config={
-                "temperature": 0.9,
+                "temperature": 0.7,
                 "top_p": 0.9,
                 "top_k": 40,
-                "max_output_tokens": 1024,
+                "max_output_tokens": 1536,
             },
         )
         # Try common accessors
@@ -760,6 +784,18 @@ async def analyze_dream(text: str, mode: str, lang: str) -> Tuple[Dict[str, Any]
     except Exception:
         pass
 
+    # Heuristic backfill for empty fields
+    try:
+        h = quick_heuristics(text, lang)
+        if not (js.get("symbols") or []):
+            js["symbols"] = h.get("symbols", [])
+        if not (js.get("themes") or []):
+            js["themes"] = h.get("themes", [])
+        if not (js.get("emotions") or []):
+            js["emotions"] = h.get("emotions", [])
+    except Exception:
+        pass
+
     interp_prompt = build_interpret_prompt(json.dumps(js, ensure_ascii=False), mode, lang)
     interp_raw = await call_gemini(interp_prompt)
     # Retry once if empty
@@ -782,6 +818,43 @@ async def analyze_dream(text: str, mode: str, lang: str) -> Tuple[Dict[str, Any]
         # Фолбэк: если модель не размечала секции, используем весь ответ как PSYCH
         if not psych and not esoteric and not advice:
             psych = interp_raw.strip()
+
+    # Ensure non-empty sections even for short dreams
+    if not psych:
+        th = js.get("themes") or []
+        sym = js.get("symbols") or []
+        if lang == "ru":
+            psych = (
+                "Сон отражает внутренний переход и поиск опоры. "
+                f"Темы: {', '.join(th) if th else 'интроспекция'}. "
+                f"Символы: {', '.join(sym[:3]) if sym else 'мягкие метафоры'}."
+            )
+        elif lang == "uk":
+            psych = (
+                "Сон відображає внутрішній перехід і пошук опори. "
+                f"Теми: {', '.join(th) if th else 'інтроспекція'}. "
+                f"Символи: {', '.join(sym[:3]) if sym else 'мʼякі метафори'}."
+            )
+        else:
+            psych = (
+                "The dream reflects an inner transition and search for footing. "
+                f"Themes: {', '.join(th) if th else 'introspection'}. "
+                f"Symbols: {', '.join(sym[:3]) if sym else 'soft metaphors'}."
+            )
+    if not esoteric:
+        if lang == "ru":
+            esoteric = "Между мирами: интуиция указывает направление; дверь уже открывается внутри."
+        elif lang == "uk":
+            esoteric = "Між світами: інтуїція підказує напрям; двері вже відчиняються всередині."
+        else:
+            esoteric = "Between worlds: intuition points the way; the door opens within."
+    if not advice:
+        if lang == "ru":
+            advice = "Не спеши — двигайся чувством. Заметь ключ в руке. 1–2 тихих шага сегодня."
+        elif lang == "uk":
+            advice = "Не поспішай — рухайся відчуттями. Поміть ключ у руці. 1–2 тихі кроки сьогодні."
+        else:
+            advice = "Don’t rush — move by feeling. Notice the key in hand. Take 1–2 quiet steps today."
 
     return js, psych, esoteric, advice
 
