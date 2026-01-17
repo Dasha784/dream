@@ -691,6 +691,27 @@ def quick_heuristics(text: str, lang: str) -> Dict[str, Any]:
     return {"symbols": symbols, "themes": themes, "emotions": emotions, "summary": summary}
 
 
+def classify_dream(text: str, js: Dict[str, Any]) -> str:
+    """Very light classifier for dream depth.
+    Returns 'domestic' (simple/social) or 'symbolic'."""
+    t = (text or "").lower()
+    # Heuristics pointing to symbolic/surreal content
+    surreal_keys = [
+        "туман","fog","ключ","key","лестниц","stair","часы","clock","без стрелок","прозрачн","transparent",
+        "свет","light","эхо","echo","зов","archetype","мист","esoter","маг"
+    ]
+    if any(k in t for k in surreal_keys):
+        return "symbolic"
+    # If very short and mentions person-like names or simple social action
+    simple_actions = ["гулял","гуляла","держались за руку","за ручку","walked","held hands","встретил","встретила"]
+    if len(t) < 220 and any(a in t for a in simple_actions):
+        return "domestic"
+    # Symbols count from structure
+    if len(js.get("symbols") or []) <= 1 and len(t) < 300:
+        return "domestic"
+    return "symbolic"
+
+
 def build_tarot_prompt(spread: int, topic: str, lang: str, by_dream: bool = False) -> str:
     header = build_style_header(lang)
     names_uk = {1: "1 карта (порада)", 3: "3 карти (минуле/теперішнє/майбутнє)", 5: "5 карт (глибокий аналіз)"}
@@ -799,7 +820,28 @@ async def analyze_dream(text: str, mode: str, lang: str) -> Tuple[Dict[str, Any]
     except Exception:
         pass
 
+    # Classify dream depth to scale style
+    depth = classify_dream(text, js)
     interp_prompt = build_interpret_prompt(json.dumps(js, ensure_ascii=False), mode, lang)
+    # Add scaling guidance into prompt
+    if lang == "ru":
+        interp_prompt += (
+            "\nГлубина сна: " + ("Бытовой/социальный" if depth == "domestic" else "Символический") + ". "
+            "Если сон бытовой/социальный — пиши кратко и ясно, без эзотерики и метафор, только по сути. "
+            "Используй символы только если они явно присутствуют."
+        )
+    elif lang == "uk":
+        interp_prompt += (
+            "\nГлибина сну: " + ("Побутовий/соціальний" if depth == "domestic" else "Символічний") + ". "
+            "Якщо сон побутовий — пиши коротко і ясно, без езотерики і зайвих метафор. "
+            "Використовуй символи лише якщо вони явно присутні."
+        )
+    else:
+        interp_prompt += (
+            "\nDepth: " + ("Domestic/Social" if depth == "domestic" else "Symbolic") + ". "
+            "If the dream is domestic/social, write briefly and clearly, no esoterics, minimal metaphors. "
+            "Use symbols only if explicitly present."
+        )
     interp_raw = await call_gemini(interp_prompt)
     # Retry once if empty
     if not interp_raw:
@@ -826,38 +868,65 @@ async def analyze_dream(text: str, mode: str, lang: str) -> Tuple[Dict[str, Any]
     if not psych:
         th = js.get("themes") or []
         sym = js.get("symbols") or []
-        if lang == "ru":
-            psych = (
-                "Сон отражает внутренний переход и поиск опоры. "
-                f"Темы: {', '.join(th) if th else 'интроспекция'}. "
-                f"Символы: {', '.join(sym[:3]) if sym else 'мягкие метафоры'}."
-            )
-        elif lang == "uk":
-            psych = (
-                "Сон відображає внутрішній перехід і пошук опори. "
-                f"Теми: {', '.join(th) if th else 'інтроспекція'}. "
-                f"Символи: {', '.join(sym[:3]) if sym else 'мʼякі метафори'}."
-            )
+        if depth == "domestic":
+            # Plain, clear, no mysticism
+            if lang == "ru":
+                psych = psych or (
+                    "Простой бытовой сон: отражение симпатии или желания близости. "
+                    "Пиши себе честно, чего ты хочешь на самом деле."
+                )
+            elif lang == "uk":
+                psych = psych or (
+                    "Простий побутовий сон: відображення симпатії або бажання близькості. "
+                    "Будь чесною із собою: чого ти насправді хочеш."
+                )
+            else:
+                psych = psych or (
+                    "A simple everyday dream: a reflection of affection or wish for closeness. "
+                    "Be honest about what you truly want."
+                )
+            esoteric = ""
+            if not advice:
+                if lang == "ru":
+                    advice = "Посмотри на свои реальные чувства. Скажи их простыми словами и сделай небольшой шаг."
+                elif lang == "uk":
+                    advice = "Подивись на свої реальні відчуття. Скажи їх простими словами і зроби маленький крок."
+                else:
+                    advice = "Notice your real feelings. Put them into simple words and take a small step."
         else:
-            psych = (
-                "The dream reflects an inner transition and search for footing. "
-                f"Themes: {', '.join(th) if th else 'introspection'}. "
-                f"Symbols: {', '.join(sym[:3]) if sym else 'soft metaphors'}."
-            )
-    if not esoteric:
-        if lang == "ru":
-            esoteric = "Между мирами: интуиция указывает направление; дверь уже открывается внутри."
-        elif lang == "uk":
-            esoteric = "Між світами: інтуїція підказує напрям; двері вже відчиняються всередині."
-        else:
-            esoteric = "Between worlds: intuition points the way; the door opens within."
-    if not advice:
-        if lang == "ru":
-            advice = "Не спеши — двигайся чувством. Заметь ключ в руке. 1–2 тихих шага сегодня."
-        elif lang == "uk":
-            advice = "Не поспішай — рухайся відчуттями. Поміть ключ у руці. 1–2 тихі кроки сьогодні."
-        else:
-            advice = "Don’t rush — move by feeling. Notice the key in hand. Take 1–2 quiet steps today."
+            # Symbolic fallback (gentle)
+            if lang == "ru":
+                psych = psych or (
+                    "Сон отражает внутренний переход и поиск опоры. "
+                    f"Темы: {', '.join(th) if th else 'интроспекция'}. "
+                    f"Символы: {', '.join(sym[:3]) if sym else 'мягкие метафоры'}."
+                )
+            elif lang == "uk":
+                psych = psych or (
+                    "Сон відображає внутрішній перехід і пошук опори. "
+                    f"Теми: {', '.join(th) if th else 'інтроспекція'}. "
+                    f"Символи: {', '.join(sym[:3]) if sym else 'мʼякі метафори'}."
+                )
+            else:
+                psych = psych or (
+                    "The dream reflects an inner transition and search for footing. "
+                    f"Themes: {', '.join(th) if th else 'introspection'}. "
+                    f"Symbols: {', '.join(sym[:3]) if sym else 'soft metaphors'}."
+                )
+            if not esoteric:
+                if lang == "ru":
+                    esoteric = "Между мирами: интуиция указывает направление; дверь уже открывается внутри."
+                elif lang == "uk":
+                    esoteric = "Між світами: інтуїція підказує напрям; двері вже відчиняються всередині."
+                else:
+                    esoteric = "Between worlds: intuition points the way; the door opens within."
+            if not advice:
+                if lang == "ru":
+                    advice = "Не спеши — двигайся чувством. Заметь ключ в руке. 1–2 тихих шага сегодня."
+                elif lang == "uk":
+                    advice = "Не поспішай — рухайся відчуттями. Поміть ключ у руці. 1–2 тихі кроки сьогодні."
+                else:
+                    advice = "Don’t rush — move by feeling. Notice the key in hand. Take 1–2 quiet steps today."
 
     return js, psych, esoteric, advice
 
@@ -878,10 +947,12 @@ def render_analysis_text(js: Dict[str, Any], psych: str, esoteric: str, advice: 
     thms = fmt_list("Themes", js.get("themes") or [])
     arch = fmt_list("Archetypes", js.get("archetypes") or [])
     summ = js.get("summary") or ""
+    syms_list = js.get("symbols") or []
+    is_simple = (not esoteric) and (len(syms_list) <= 1) and (len(summ) <= 220)
 
     if lang == "uk":
         # М'яка денникова подача: короткі рядки, вплетені образи, без сухих списків
-        header = "Аналіз сну 🌙"
+        header = "Аналіз сну 🌙" if not is_simple else "Аналіз сну"
         # Емоції: українською, без чисел
         uk_emo_map = {"calm": "спокій", "anxiety": "тривога", "joy": "радість", "sad": "смуток"}
         emo_words: List[str] = []
@@ -921,20 +992,27 @@ def render_analysis_text(js: Dict[str, Any], psych: str, esoteric: str, advice: 
                     symbol_lines.append(line)
                     break
 
-        parts = [
-            header,
-            f"Цей сон — про {head_core} ✨",
-            (f"Локація: {loc}" if loc else ""),
-            (f"Емоційний настрій: {emo_line} 🌊" if emo_line else ""),
-        ] + symbol_lines + [
-            (f"Коротко: {summ}" if summ else ""),
-            (psych or ""),
-            (esoteric or ""),
-            (f"Порада: {advice}" if advice else ""),
-        ]
+        if is_simple:
+            parts = [
+                header,
+                (psych or ""),
+                (f"Порада: {advice}" if advice else ""),
+            ]
+        else:
+            parts = [
+                header,
+                f"Цей сон — про {head_core} ✨",
+                (f"Локація: {loc}" if loc else ""),
+                (f"Емоційний настрій: {emo_line} 🌊" if emo_line else ""),
+            ] + symbol_lines + [
+                (f"Коротко: {summ}" if summ else ""),
+                (psych or ""),
+                (esoteric or ""),
+                (f"Порада: {advice}" if advice else ""),
+            ]
     elif lang == "ru":
         # Мягкая дневниковая подача: короткие строки, вплетённые образы, без сухих списков
-        header = "Анализ сна 🌙"
+        header = "Анализ сна 🌙" if not is_simple else "Анализ сна"
         # Эмоции: по‑русски, без чисел
         ru_emo_map = {"calm": "спокойствие", "anxiety": "тревога", "joy": "радость", "sad": "печаль"}
         emo_words: List[str] = []
@@ -974,20 +1052,27 @@ def render_analysis_text(js: Dict[str, Any], psych: str, esoteric: str, advice: 
                     symbol_lines.append(line)
                     break
 
-        parts = [
-            header,
-            f"Этот сон — про {head_core} ✨",
-            (f"Локация: {loc}" if loc else ""),
-            (f"Эмоциональный фон: {emo_line} 🌊" if emo_line else ""),
-        ] + symbol_lines + [
-            (f"Кратко: {summ}" if summ else ""),
-            (psych or ""),
-            (esoteric or ""),
-            (f"Совет: {advice}" if advice else ""),
-        ]
+        if is_simple:
+            parts = [
+                header,
+                (psych or ""),
+                (f"Совет: {advice}" if advice else ""),
+            ]
+        else:
+            parts = [
+                header,
+                f"Этот сон — про {head_core} ✨",
+                (f"Локация: {loc}" if loc else ""),
+                (f"Эмоциональный фон: {emo_line} 🌊" if emo_line else ""),
+            ] + symbol_lines + [
+                (f"Кратко: {summ}" if summ else ""),
+                (psych or ""),
+                (esoteric or ""),
+                (f"Совет: {advice}" if advice else ""),
+            ]
     else:
         # Soft, diary-like English rendering
-        header = "Dream Analysis 🌙"
+        header = "Dream Analysis 🌙" if not is_simple else "Dream Analysis"
         # Emotions: English words only, no scores
         emo_words = [
             (e.get("label") or "").lower() for e in (js.get("emotions") or []) if (e.get("label") or "").strip()
@@ -1022,17 +1107,24 @@ def render_analysis_text(js: Dict[str, Any], psych: str, esoteric: str, advice: 
                     symbol_lines.append(line)
                     break
 
-        parts = [
-            header,
-            f"This dream is about {head_core} ✨",
-            (f"Location: {loc}" if loc else ""),
-            (f"Emotional tone: {emo_line} 🌊" if emo_line else ""),
-        ] + symbol_lines + [
-            (f"Briefly: {summ}" if summ else ""),
-            (psych or ""),
-            (esoteric or ""),
-            (f"Advice: {advice}" if advice else ""),
-        ]
+        if is_simple:
+            parts = [
+                header,
+                (psych or ""),
+                (f"Advice: {advice}" if advice else ""),
+            ]
+        else:
+            parts = [
+                header,
+                f"This dream is about {head_core} ✨",
+                (f"Location: {loc}" if loc else ""),
+                (f"Emotional tone: {emo_line} 🌊" if emo_line else ""),
+            ] + symbol_lines + [
+                (f"Briefly: {summ}" if summ else ""),
+                (psych or ""),
+                (esoteric or ""),
+                (f"Advice: {advice}" if advice else ""),
+            ]
     return "\n".join([p for p in parts if p])
 
 
