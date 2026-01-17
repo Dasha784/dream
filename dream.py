@@ -642,7 +642,13 @@ def build_style_header(lang: str) -> str:
     )
 
 
-
+def build_interpret_prompt(struct_json: str, mode: str, lang: str) -> str:
+    if lang == "uk":
+        base = ""
+    elif lang == "ru":
+        base = ""
+    else:
+        base = ""
     header = build_style_header(lang)
     if lang == "ru":
         example = (
@@ -672,7 +678,7 @@ def build_style_header(lang: str) -> str:
             "ADVICE: 2–3 practical lines based on the dream's meaning\n"
         )
     scaling_ru = (
-        "Правила масштаба: Если сон бытовой/социальный — пиши ясно, но ВСЕ РАВНО раскрывай смысл и связь с реальностью. Без эзотерики, 1–2 мягких емодзи максимум. "
+        "Правила масштаба: Если сон бытовой/социальный — пиши кратко, ясно, но ВСЕ РАВНО раскрывай смысл и связь с реальностью. Без эзотерики, 1–2 мягких емодзи максимум. "
         "Если сон символический — пиши плавно, образно, вплітай символы в текст, РАСКРЫВАЙ их значение глубоко. "
         "Всегда опирайся на поля структуры: location, characters(name), actions, symbols, emotions, themes, summary. "
         "Никогда не используй шаблонные заготовки: формулировки должны быть уникальны и конкретны по содержанию сна. "
@@ -680,7 +686,7 @@ def build_style_header(lang: str) -> str:
         "ESOTERIC включай только если уместно; для простых снов оставь коротко или пусто."
     )
     scaling_uk = (
-        "Правила масштабу: Якщо сон побутовий/соціальний — пиши ясно, але ВСЕ ОДНО розкривай сенс і зв'язок з реальністю. Без езотерики, 1–2 мʼякі емодзі максимум. "
+        "Правила масштабу: Якщо сон побутовий/соціальний — пиши коротко, ясно, але ВСЕ ОДНО розкривай сенс і зв'язок з реальністю. Без езотерики, 1–2 мʼякі емодзі максимум. "
         "Якщо сон символічний — пиши плавно, образно, вплітай символи у текст, РОЗКРИВАЙ їх значення глибоко. "
         "Завжди спирайся на поля структури: location, characters(name), actions, symbols, emotions, themes, summary. "
         "Ніколи не використовуй шаблонні заготовки: формулювання мають бути унікальні та конкретні до сну. "
@@ -688,7 +694,7 @@ def build_style_header(lang: str) -> str:
         "ESOTERIC додавай лише якщо доречно; для простих снів — коротко або порожньо."
     )
     scaling_en = (
-        "Scaling rules: If the dream is domestic/social — write clearly, but STILL uncover meaning and connection to reality. No esoterics, at most 1–2 gentle emojis. "
+        "Scaling rules: If the dream is domestic/social — write briefly and clearly, but STILL uncover meaning and connection to reality. No esoterics, at most 1–2 gentle emojis. "
         "If symbolic — write softly and evocatively, weave symbols into prose, DEEPLY REVEAL their meaning. "
         "Always ground in structure fields: location, characters(name), actions, symbols, emotions, themes, summary. "
         "Never use boilerplate: wording must be unique and specific to this dream. "
