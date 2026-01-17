@@ -353,7 +353,7 @@ def choose_ui_text(lang: str) -> Dict[str, str]:
             "no_api": "Аналіз доступний після налаштування GOOGLE_API_KEY.",
             "done": "Готово.",
             "image_paid": "Генерація зображень — платна функція. У вас наразі безкоштовний тариф.",
-            "image_ok": "Готую візуалізацію (демо-опис):",
+            "image_ok": "магія читає ваші сни🔮🔮🔮:",
             "ask_need_text": "Використай: /ask ваше запитання",
             "stats_title": "Статистика ваших снів",
         }
@@ -361,7 +361,7 @@ def choose_ui_text(lang: str) -> Dict[str, str]:
         return {
             "hello": "Привет! Пришли текст сна — верну структурированный анализ (Mixed). Команда /dream — тоже принимает сон.",
             "prompt_dream": "Пожалуйста, отправь текст сна одним сообщением.",
-            "processing": "магия читает ваши сны и мистик стики…",
+            "processing": "магия читает ваши сны🔮🔮🔮",
             "no_api": "Анализ доступен после настройки GOOGLE_API_KEY.",
             "done": "Готово.",
             "image_paid": "Генерация изображений — платная функция. У вас сейчас бесплатный тариф.",
@@ -372,7 +372,7 @@ def choose_ui_text(lang: str) -> Dict[str, str]:
     return {
         "hello": "Hi! Send your dream text to get a structured Mixed interpretation. You can also use /dream.",
         "prompt_dream": "Please send your dream text in a single message.",
-        "processing": "Processing your dream…",
+        "processing": "Magic reads your dreams🔮🔮🔮",
         "no_api": "Analysis requires GOOGLE_API_KEY to be set.",
         "done": "Done.",
         "image_paid": "Image generation is a paid feature. You are currently on the free tier.",
