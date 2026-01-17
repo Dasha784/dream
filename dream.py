@@ -767,9 +767,25 @@ def build_interpret_prompt(struct_json: str, mode: str, lang: str) -> str:
             "9) Do not quote or restate the dream verbatim; paraphrase in your own words and REVEAL its meaning.\n"
             "10) Make analysis LIVING and INTERESTING to read — use figurative language, create a holistic picture, show connections between dream elements and real life.\n"
         )
+    # Extract dream text from structure
+    dream_text_snippet = ""
+    try:
+        struct_data = json.loads(struct_json)
+        dream_text_snippet = struct_data.get("_original_text", "") or struct_data.get("summary", "")
+        dream_text_snippet = dream_text_snippet[:400] if dream_text_snippet else ""
+    except:
+        pass
+    
+    dream_text_label = (
+        "Исходный текст сна:" if lang == "ru" else
+        "Вихідний текст сну:" if lang == "uk" else
+        "Original dream text:"
+    )
+    
     return (
         f"{header}\n\n{base}\n"
         f"Mode: {mode}.\n"
+        f"{dream_text_label} {dream_text_snippet}\n\n"
         f"Structure (JSON): {struct_json}\n"
         f"{example}"
         f"{scaling}{avoid}"
@@ -797,8 +813,9 @@ def quick_heuristics(text: str, lang: str) -> Dict[str, Any]:
     if any(w in t for w in ["часы","время","без стрелок","time"]):
         themes.append("timelessness")
     emotions: List[Dict[str, Any]] = []
+    # Let AI determine emotions from structure, just keep basic heuristics as fallback
     if any(w in t for w in ["страх","тревога","боязнь","fear","anx"]):
-        emotions.append({"label": "anxiety", "score": 0.6})
+        emotions.append({"label": "anxiety", "score": 0.7})
     if any(w in t for w in ["спокой","мягк","calm","тихо","gentle"]):
         emotions.append({"label": "calm", "score": 0.7})
     summary = (text or "").strip()[:200]
@@ -834,6 +851,28 @@ def validate_ai_output(text: str, js: Dict[str, Any], psych: str, esoteric: str,
     Returns (ok, message)."""
     t = (text or "").lower()
     combined = " ".join([psych or "", esoteric or "", advice or ""]).lower()
+    
+    # Check for generic/template responses
+    generic_patterns = [
+        "символический сон про внутреннее движение и чувство пути",
+        "символічний сон про внутрішній рух і відчуття шляху",
+        "symbolic dream about inner movement and a sense of path",
+        "внутреннее движение и чувство пути",
+        "внутрішній рух і відчуття шляху",
+        "inner movement and a sense of path",
+        "про внутреннее движение",
+        "про внутрішній рух",
+        "about inner movement"
+    ]
+    for pattern in generic_patterns:
+        if pattern in combined.lower():
+            return False, "Ответ слишком общий и шаблонный. Раскрой конкретный смысл сна, используя детали из структуры."
+    
+    # Check minimum length for meaningful analysis
+    psych_lower = (psych or "").lower().strip()
+    if len(psych_lower) < 100:  # Too short for meaningful analysis
+        return False, "Анализ слишком короткий. Раскрой смысл сна подробнее, минимум 5–7 предложений с конкретными деталями."
+    
     # collect details
     details: List[str] = []
     for s in (js.get("symbols") or []):
@@ -851,20 +890,36 @@ def validate_ai_output(text: str, js: Dict[str, Any], psych: str, esoteric: str,
         lbl = (e.get("label") or "").lower()
         if lbl:
             details.append(lbl)
-    # count matches
+    location = (js.get("location") or "").lower()
+    if location:
+        details.append(location)
+    
+    # count matches - need at least 2-3 details from dream
     ref = sum(1 for d in set(details) if d and d in combined)
     if ref < 2:
-        return False, "Недостаточно конкретики — упомяни минимум две детали из сна (объекты/действия/эмоции)."
+        detail_list = ", ".join(list(set(details))[:5])
+        return False, f"Недостаточно конкретики — упомяни минимум две детали из сна. Доступные детали: {detail_list}. Используй их для раскрытия смысла."
     forbidden = [
         "дверь уже открывается", "ключ в руке", "1–2 тихих шага", "the door opens within"
     ]
     for f in forbidden:
         if f in combined and f not in t:
-            return False, f"Убери штамп ‘{f}’ — его не было в описании сна."
+            return False, f"Убери штамп '{f}' — его не было в описании сна."
     # avoid echoing summary verbatim
     summary = (js.get("summary") or "").strip()
     if len(summary) >= 24 and summary.lower()[:24] in combined:
         return False, "Не пересказывай сон дословно — переформулируй своими словами, используя детали."
+    
+    # Check if analysis explains meaning (key words that indicate meaning explanation)
+    meaning_indicators = [
+        "означает", "может означать", "отражает", "связан", "показывает", "говорит",
+        "означає", "може означати", "відображає", "пов'язаний", "показує", "говорить",
+        "means", "might mean", "reflects", "connected", "shows", "tells"
+    ]
+    has_meaning = any(indicator in psych_lower for indicator in meaning_indicators)
+    if not has_meaning and len(psych_lower) > 50:
+        return False, "В анализе не раскрыт СМЫСЛ сна. Обязательно объясни: что этот сон может означать в реальной жизни, какие внутренние процессы он отражает."
+    
     return True, "ok"
 
 
@@ -978,6 +1033,13 @@ async def analyze_dream(text: str, mode: str, lang: str) -> Tuple[Dict[str, Any]
 
     # Classify dream depth to scale style
     depth = classify_dream(text, js)
+    # Ensure summary contains the original dream text for context
+    if not (js.get("summary") or "").strip() or len((js.get("summary") or "").strip()) < 50:
+        js["summary"] = (text or "").strip()[:300]
+    
+    # Add original dream text to structure for context
+    js["_original_text"] = (text or "").strip()[:500]
+    
     interp_prompt = build_interpret_prompt(json.dumps(js, ensure_ascii=False), mode, lang)
     # Add scaling guidance into prompt
     if lang == "ru":
@@ -1112,31 +1174,133 @@ async def analyze_dream(text: str, mode: str, lang: str) -> Tuple[Dict[str, Any]
                         "Name the feeling in simple words and take a small action.",
                     ])
         else:
-            # Symbolic fallback (gentle)
-            if lang == "ru":
-                psych = psych or "Символический сон про внутреннее движение и чувство пути."
-            elif lang == "uk":
-                psych = psych or "Символічний сон про внутрішній рух і відчуття шляху."
-            else:
-                psych = psych or "A symbolic dream about inner movement and a sense of path."
+            # Symbolic fallback - create specific analysis based on dream details
+            s = (text or "").lower()
+            symbols = [str(sym) for sym in (js.get("symbols") or [])[:3]]
+            actions = [str(act) for act in (js.get("actions") or [])[:3]]
+            characters = [c.get("name", "") if isinstance(c, dict) else str(c) for c in (js.get("characters") or [])[:3] if c]
+            location = js.get("location") or ""
+            emotions_list = [e.get("label", "") for e in (js.get("emotions") or []) if isinstance(e, dict) and e.get("label")]
+            
+            # Build specific analysis from dream details instead of generic template
+            if not psych:
+                details_parts = []
+                if symbols:
+                    details_parts.append(f"символов: {', '.join(symbols[:2])}")
+                if actions:
+                    details_parts.append(f"действий: {', '.join(actions[:2])}")
+                if characters:
+                    details_parts.append(f"персонажей: {', '.join([c for c in characters if c][:2])}")
+                if location:
+                    details_parts.append(f"место: {location}")
+                
+                detail_str = ", ".join(details_parts) if details_parts else "детали сна"
+                
+                if lang == "ru":
+                    # Create more specific analysis - retry with stronger prompt
+                    retry_prompt_specific = (
+                        f"Ты — эксперт по анализу снов. Раскрой ГЛУБОКИЙ СМЫСЛ этого сна.\n\n"
+                        f"ИСХОДНЫЙ ТЕКСТ СНА: {text[:400]}\n\n"
+                        f"СТРУКТУРА: {json.dumps(js, ensure_ascii=False)[:500]}\n\n"
+                        "ЗАДАЧА: Напиши глубокий психологический анализ (5–10 предложений). ОБЯЗАТЕЛЬНО:\n"
+                        "1. Раскрой ЧТО этот сон может означать в реальной жизни человека\n"
+                        "2. Какие внутренние процессы, переживания, страхи или надежды он отражает\n"
+                        "3. Как символы/действия/места/персонажи связаны с жизнью человека\n"
+                        "4. Какие скрытые послания несёт сон\n"
+                        "5. Используй конкретные детали из сна (не просто перечисляй, а объясняй их смысл)\n\n"
+                        "Пиши тепло, образно, интересно. Создай из сна целый мир. Избегай шаблонных фраз типа 'внутреннее движение' или 'чувство пути'."
+                    )
+                    retry_result = await call_gemini(retry_prompt_specific)
+                    if retry_result and len(retry_result.strip()) > 100:
+                        psych = retry_result.strip()
+                    else:
+                        # Last resort - but try to create something from details at least
+                        if detail_str:
+                            psych = f"Символический сон с {detail_str}. " + (
+                                "Этот сон отражает внутренние переживания и требует внимательного анализа деталей."
+                            )
+                        else:
+                            psych = "Символический сон, отражающий внутренние процессы. Рекомендуется внимательно проанализировать детали."
+                elif lang == "uk":
+                    retry_prompt_specific = (
+                        f"Ти — експерт з аналізу снів. Розкрий ГЛИБОКИЙ СМИСЛ цього сну.\n\n"
+                        f"ВИХІДНИЙ ТЕКСТ СНУ: {text[:400]}\n\n"
+                        f"СТРУКТУРА: {json.dumps(js, ensure_ascii=False)[:500]}\n\n"
+                        "ЗАВДАННЯ: Напиши глибокий психологічний аналіз (5–10 речень). ОБОВ'ЯЗКОВО:\n"
+                        "1. Розкрий ЩО цей сон може означати в реальному житті людини\n"
+                        "2. Які внутрішні процеси, переживання, страхи або надії він відображає\n"
+                        "3. Як символи/дії/місця/персонажі пов'язані з життям людини\n"
+                        "4. Які приховані послання несе сон\n"
+                        "5. Використовуй конкретні деталі зі сну (не просто перераховуй, а пояснюй їх сенс)\n\n"
+                        "Пиши тепло, образно, цікаво. Створи зі сну цілий світ. Уникай шаблонних фраз типу 'внутрішній рух' або 'відчуття шляху'."
+                    )
+                    retry_result = await call_gemini(retry_prompt_specific)
+                    if retry_result and len(retry_result.strip()) > 100:
+                        psych = retry_result.strip()
+                    else:
+                        if detail_str:
+                            psych = f"Символічний сон з {detail_str}. " + (
+                                "Цей сон відображає внутрішні переживання і потребує уважного аналізу деталей."
+                            )
+                        else:
+                            psych = "Символічний сон, що відображає внутрішні процеси. Рекомендується уважно проаналізувати деталі."
+                else:
+                    retry_prompt_specific = (
+                        f"You are a dream analysis expert. Uncover the DEEP MEANING of this dream.\n\n"
+                        f"ORIGINAL DREAM TEXT: {text[:400]}\n\n"
+                        f"STRUCTURE: {json.dumps(js, ensure_ascii=False)[:500]}\n\n"
+                        "TASK: Write a deep psychological analysis (5–10 sentences). MUST:\n"
+                        "1. Reveal WHAT this dream might mean in the person's real life\n"
+                        "2. What inner processes, experiences, fears or hopes it reflects\n"
+                        "3. How symbols/actions/places/characters are connected to the person's life\n"
+                        "4. What hidden messages the dream carries\n"
+                        "5. Use specific details from the dream (don't just list, explain their meaning)\n\n"
+                        "Write warmly, evocatively, interestingly. Create a whole world from the dream. Avoid template phrases like 'inner movement' or 'sense of path'."
+                    )
+                    retry_result = await call_gemini(retry_prompt_specific)
+                    if retry_result and len(retry_result.strip()) > 100:
+                        psych = retry_result.strip()
+                    else:
+                        if detail_str:
+                            psych = f"Symbolic dream with {detail_str}. " + (
+                                "This dream reflects inner experiences and requires careful analysis of details."
+                            )
+                        else:
+                            psych = "Symbolic dream reflecting inner processes. Recommend carefully analyzing the details."
+            
             if not esoteric:
                 esoteric = ""
             if not advice:
-                if lang == "ru":
-                    advice = random.choice([
-                        "Двигайся в своём темпе и отмечай, что отзывается внутри.",
-                        "Оглянись на символы сна и выбери один мягкий, осмысленный шаг.",
-                    ])
-                elif lang == "uk":
-                    advice = random.choice([
-                        "Рухайся у своєму ритмі і помічай, що відгукується всередині.",
-                        "Озирнись на символи сну і обери один мʼякий, осмислений крок.",
-                    ])
+                # Let AI generate advice from dream details - retry with specific prompt
+                if detail_str:
+                    advice_prompt = (
+                        f"Сон: {text[:400]}\n\n"
+                        f"Структура: {json.dumps(js, ensure_ascii=False)[:500]}\n\n"
+                    )
+                    if lang == "ru":
+                        advice_prompt += "Дай практичный совет на основе этого сна (2–3 строки). Что человек может сделать в реальной жизни, исходя из смысла сна?"
+                    elif lang == "uk":
+                        advice_prompt += "Дай практичну пораду на основі цього сну (2–3 рядки). Що людина може зробити в реальному житті, виходячи зі сенсу сну?"
+                    else:
+                        advice_prompt += "Give practical advice based on this dream (2–3 lines). What can the person do in real life, based on the dream's meaning?"
+                    
+                    advice_result = await call_gemini(advice_prompt)
+                    if advice_result and len(advice_result.strip()) > 30:
+                        advice = advice_result.strip()
+                    else:
+                        if lang == "ru":
+                            advice = "Обрати внимание на детали сна и подумай, что они могут означать в твоей жизни."
+                        elif lang == "uk":
+                            advice = "Зверни увагу на деталі сну і подумай, що вони можуть означати в твоєму житті."
+                        else:
+                            advice = "Pay attention to dream details and think about what they might mean in your life."
                 else:
-                    advice = random.choice([
-                        "Move at your own pace and notice what resonates inside.",
-                        "Look back at the dream’s symbols and choose one gentle, meaningful step.",
-                    ])
+                    if lang == "ru":
+                        advice = "Обрати внимание на детали сна — они могут указать на то, что важно для тебя сейчас."
+                    elif lang == "uk":
+                        advice = "Зверни увагу на деталі сну — вони можуть вказати на те, що важливо для тебе зараз."
+                    else:
+                        advice = "Pay attention to dream details — they might point to what's important for you now."
 
     # Validate AI output; if weak, reprompt once with critique
     ok, msg = validate_ai_output(text, js, psych, esoteric, advice)
