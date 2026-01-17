@@ -30,6 +30,12 @@ if GOOGLE_API_KEY and genai_new is not None:
     pass
 
 DB_PATH = os.getenv("DREAMMAP_DB", os.path.join(os.path.dirname(__file__), "dreammap.sqlite3"))
+# Ensure the directory for the SQLite DB exists (helps when using mounted volumes like /data)
+_db_dir = os.path.dirname(DB_PATH) or "."
+try:
+    os.makedirs(_db_dir, exist_ok=True)
+except Exception:
+    pass
 
 
 def db_conn() -> sqlite3.Connection:
