@@ -631,11 +631,36 @@ def build_interpret_prompt(struct_json: str, mode: str, lang: str) -> str:
     else:
         base = "Based on the structure, provide: 1) Psychological interpretation 2) Esoteric (gently) 3) Advice/lesson (2–3 bullets)."
     header = build_style_header(lang)
+    if lang == "ru":
+        example = (
+            "Формат ОТВЕТА СТРОГО ТАКОЙ:\n"
+            "PSYCH: один-два абзаца\n"
+            "ESOTERIC: один абзац\n"
+            "ADVICE: 2–3 короткие строки\n"
+        )
+    elif lang == "uk":
+        example = (
+            "Формат ВІДПОВІДІ СТРОГО ТАКИЙ:\n"
+            "PSYCH: один-два абзаци\n"
+            "ESOTERIC: один абзац\n"
+            "ADVICE: 2–3 короткі рядки\n"
+        )
+    else:
+        example = (
+            "RESPONSE FORMAT STRICTLY:\n"
+            "PSYCH: one-two short paragraphs\n"
+            "ESOTERIC: one paragraph\n"
+            "ADVICE: 2–3 short lines\n"
+        )
     return (
         f"{header}\n\n{base}\n"
         f"Mode: {mode}.\n"
         f"Structure (JSON): {struct_json}\n"
-        "Return a compact response with three labeled sections: PSYCH, ESOTERIC, ADVICE."
+        f"{example}"
+        "Всегда включай все три секции даже если очень кратко." if lang == "ru" else (
+        "Завжди включай усі три секції навіть якщо дуже стисло." if lang == "uk" else
+        "Always include all three sections even if very brief."
+        )
     )
 
 
