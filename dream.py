@@ -1201,19 +1201,7 @@ def render_analysis_text(js: Dict[str, Any], psych: str, esoteric: str, advice: 
     if lang == "uk":
         # М'яка денникова подача: короткі рядки, вплетені образи, без сухих списків
         header = "Аналіз сну 🌙"
-        # Емоції: українською, без чисел
-        uk_emo_map = {"calm": "спокій", "anxiety": "тривога", "joy": "радість", "sad": "смуток"}
-        emo_words: List[str] = []
-        for e in (js.get("emotions") or []):
-            lbl = (e.get("label") or "").lower()
-            if lbl:
-                emo_words.append(uk_emo_map.get(lbl, lbl))
-        emo_line = ", ".join(dict.fromkeys([w for w in emo_words if w])) or "спокійна присутність"
 
-        # Теми у короткий сенсовий заголовок
-        themes_uk = {"transition": "перехід", "timelessness": "поза часом", "flow/emotion": "рух через відчуття"}
-        th = [themes_uk.get(t, t) for t in (js.get("themes") or [])]
-        head_core = ", ".join(dict.fromkeys([t for t in th if t])) or "внутрішній пошук"
 
         # Вплетені інтерпретації символів
         sym_words = [s if isinstance(s, str) else str(s) for s in (js.get("symbols") or [])]
@@ -1250,19 +1238,7 @@ def render_analysis_text(js: Dict[str, Any], psych: str, esoteric: str, advice: 
     elif lang == "ru":
         # Мягкая дневниковая подача: короткие строки, вплетённые образы, без сухих списков
         header = "Анализ сна 🌙"
-        # Эмоции: по‑русски, без чисел
-        ru_emo_map = {"calm": "спокойствие", "anxiety": "тревога", "joy": "радость", "sad": "печаль"}
-        emo_words: List[str] = []
-        for e in (js.get("emotions") or []):
-            lbl = (e.get("label") or "").lower()
-            if lbl:
-                emo_words.append(ru_emo_map.get(lbl, lbl))
-        emo_line = ", ".join(dict.fromkeys([w for w in emo_words if w])) or "спокойное присутствие"
-
-        # Темы в короткий смысл заголовка
-        themes_ru = {"transition": "переход", "timelessness": "вне времени", "flow/emotion": "движение через чувство"}
-        th = [themes_ru.get(t, t) for t in (js.get("themes") or [])]
-        head_core = ", ".join(dict.fromkeys([t for t in th if t])) or "внутренний поиск"
+        
 
         # Вплетённые интерпретации символов
         sym_words = [s if isinstance(s, str) else str(s) for s in (js.get("symbols") or [])]
@@ -1299,16 +1275,7 @@ def render_analysis_text(js: Dict[str, Any], psych: str, esoteric: str, advice: 
     else:
         # Soft, diary-like English rendering
         header = "Dream Analysis 🌙"
-        # Emotions: English words only, no scores
-        emo_words = [
-            (e.get("label") or "").lower() for e in (js.get("emotions") or []) if (e.get("label") or "").strip()
-        ]
-        emo_line = ", ".join(dict.fromkeys([w for w in emo_words if w])) or "calm presence"
-
-        themes_en = {"transition": "transition", "timelessness": "out of time", "flow/emotion": "moving by feeling"}
-        th = [themes_en.get(t, t) for t in (js.get("themes") or [])]
-        head_core = ", ".join(dict.fromkeys([t for t in th if t])) or "inner seeking"
-
+    
         sym_words = [s if isinstance(s, str) else str(s) for s in (js.get("symbols") or [])]
         en_symbol_map = {
             "stop": "A stop — a pause between phases. The past is near, yet fading in mist 🚏",
