@@ -14,9 +14,9 @@ from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardB
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 try:
-    import google.generativeai as genai
+    from google import genai as genai_new
 except Exception:
-    genai = None 
+    genai_new = None 
 
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -26,11 +26,8 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 if not TELEGRAM_BOT_TOKEN:
     raise RuntimeError("Please set TELEGRAM_BOT_TOKEN in environment variables.")
 
-if GOOGLE_API_KEY and genai is not None:
-    try:
-        genai.configure(api_key=GOOGLE_API_KEY)
-    except Exception:
-        pass
+if GOOGLE_API_KEY and genai_new is not None:
+    pass
 
 DB_PATH = os.getenv("DREAMMAP_DB", os.path.join(os.path.dirname(__file__), "dreammap.sqlite3"))
 
@@ -143,11 +140,19 @@ def db_migrate() -> None:
     conn.close()
 
 
+def row_get(row: Optional[sqlite3.Row], key: str, default: Any = None) -> Any:
+    if row is None:
+        return default
+    try:
+        return row[key]
+    except Exception:
+        return default
+
+
 def get_lang_for_user(tg_user_id: int, fallback: str = "ru") -> str:
     u = get_user(tg_user_id)
-    if u and u.get("language"):
-        return u.get("language")
-    return fallback
+    val = row_get(u, "language", fallback)
+    return val if val else fallback
 
 
 def set_language_for_user(tg_user_id: int, language: str) -> None:
@@ -564,18 +569,10 @@ def settings_languages_kb(lang: str) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 def gemini_client():
-    if not GOOGLE_API_KEY or genai is None:
+    if not GOOGLE_API_KEY or genai_new is None:
         return None
     try:
-        return genai.GenerativeModel(
-            GEMINI_MODEL,
-            generation_config={
-                "temperature": 0.9,
-                "top_p": 0.9,
-                "top_k": 40,
-                "max_output_tokens": 1024,
-            },
-        )
+        return genai_new.Client(api_key=GOOGLE_API_KEY)
     except Exception:
         return None
 
@@ -664,12 +661,30 @@ def build_tarot_prompt(spread: int, topic: str, lang: str, by_dream: bool = Fals
 
 
 async def call_gemini(prompt: str) -> str:
-    model = gemini_client()
-    if not model:
+    client = gemini_client()
+    if not client:
         return ""
     try:
-        resp = await asyncio.to_thread(model.generate_content, prompt)
-        return resp.text or ""
+        resp = await asyncio.to_thread(
+            client.models.generate_content,
+            model=GEMINI_MODEL,
+            contents=prompt,
+            generation_config={
+                "temperature": 0.9,
+                "top_p": 0.9,
+                "top_k": 40,
+                "max_output_tokens": 1024,
+            },
+        )
+        # New client returns an object with output text accessible via 'text' or 'candidates'
+        text = getattr(resp, "text", None)
+        if text:
+            return text
+        # Fallback: try to extract from candidates
+        try:
+            return resp.candidates[0].content.parts[0].text
+        except Exception:
+            return ""
     except Exception:
         return ""
 
@@ -854,7 +869,7 @@ async def cmd_stats(message: Message):
 async def cmd_settings(message: Message):
     lang = get_lang_for_user(message.from_user.id, detect_lang(message.text or ""))
     u = get_user(message.from_user.id)
-    mode = (u["default_mode"] if u and "default_mode" in u.keys() else "Mixed") if u else "Mixed"
+    mode = row_get(u, "default_mode", "Mixed")
     notif = (u["notifications_enabled"] if u and "notifications_enabled" in u.keys() else 0) if u else 0
     tz = (u["timezone"] if u and "timezone" in u.keys() else "Europe/Kyiv") if u else "Europe/Kyiv"
     prem = user_is_premium(message.from_user.id)
@@ -1131,8 +1146,8 @@ async def cmd_daily(message: Message):
     uid = message.from_user.id
     if enabled is None and hour is None:
         u = get_user(uid)
-        curr = 'on' if (u and u.get('notifications_enabled')) else 'off'
-        h = u.get('daily_hour') if u else 9
+        curr = 'on' if row_get(u, 'notifications_enabled', 0) else 'off'
+        h = row_get(u, 'daily_hour', 9)
         if lang == "uk":
             await message.answer(f"Статус: {curr}, година: {h}. Використай: /daily on 9 або /daily off")
         elif lang == "ru":
@@ -1143,7 +1158,7 @@ async def cmd_daily(message: Message):
     if enabled is not None:
         set_notifications(uid, enabled, hour)
     elif hour is not None:
-        set_notifications(uid, get_user(uid).get('notifications_enabled') or 0, hour)
+        set_notifications(uid, row_get(get_user(uid), 'notifications_enabled', 0), hour)
     if lang == "uk":
         await message.answer("Оновлено.")
     elif lang == "ru":
