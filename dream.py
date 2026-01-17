@@ -3,10 +3,14 @@ import asyncio
 import json
 import sqlite3
 import re
+import warnings
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import Any, Dict, List, Optional, Tuple
 import random
+
+# Подавляем предупреждения от pydantic (используется в google-genai)
+warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
 # Non-repeat cache for short advice lines to avoid repetition across recent answers
 _recent_cache: Dict[str, List[str]] = {}
@@ -31,7 +35,10 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 try:
     from google import genai as genai_new
-except Exception:
+except ImportError:
+    genai_new = None
+except Exception as e:
+    print(f"Warning: Could not import google.genai: {e}")
     genai_new = None 
 
 
