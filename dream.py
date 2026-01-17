@@ -1201,6 +1201,60 @@ def render_analysis_text(js: Dict[str, Any], psych: str, esoteric: str, advice: 
     if lang == "uk":
         # М'яка денникова подача: короткі рядки, вплетені образи, без сухих списків
         header = "Аналіз сну 🌙"
+        # Емоції: українською, без чисел
+        uk_emo_map = {
+    "calm": "спокій",
+    "anxiety": "тривога",
+    "joy": "радість",
+    "sad": "смуток",
+    "fear": "страх",
+    "surprise": "здивування",
+    "love": "любов",
+    "anger": "злість",
+    "confusion": "спантеличеність",
+    "curiosity": "цікавість",
+    "nostalgia": "ностальгія",
+    "relief": "полегшення",
+    "excitement": "захоплення"
+}
+
+# 🌟 Эмоции: украинский, без чисел
+emo_words: List[str] = []
+for e in (js.get("emotions") or []):
+    if isinstance(e, dict):
+        lbl = (e.get("label") or "").lower()
+    else:
+        lbl = str(e).lower()
+    if lbl:
+        emo_words.append(uk_emo_map.get(lbl, lbl))
+
+# Убираем дубли и пустые значения, fallback если пусто
+emo_line = ", ".join(dict.fromkeys([w for w in emo_words if w])) or "спокійна присутність"
+        
+        # Теми у короткий сенсовий заголовок
+themes_uk = {    "transition": "перехід",
+"timelessness": "поза часом",
+"flow/emotion": "рух через відчуття",
+"relationships": "стосунки",
+"growth": "зростання",
+"loneliness": "самотність",
+"conflict": "конфлікт",
+"adventure": "пригоди",
+"mystery": "таємниця",
+"self_respect": "самоповага",
+"introspection": "самоаналіз",
+"fear": "страх",
+"joy": "радість"}
+th = []
+                
+for t in (js.get("themes") or []):
+     if isinstance(t, dict):
+        t_key = (t.get("label") or "").lower()
+     else:
+        t_key = str(t).lower()
+     if t_key:
+        th.append(themes_uk.get(t_key, t_key))
+        head_core = ", ".join(dict.fromkeys([t for t in th if t])) or "внутрішній пошук"
 
 
         # Вплетені інтерпретації символів
@@ -1235,10 +1289,66 @@ def render_analysis_text(js: Dict[str, Any], psych: str, esoteric: str, advice: 
             (esoteric or ""),
             (f"Порада: {advice}" if advice else ""),
         ]
-    elif lang == "ru":
+     elif lang == "ru":
         # Мягкая дневниковая подача: короткие строки, вплетённые образы, без сухих списков
         header = "Анализ сна 🌙"
         
+        # Емоції: українською, без чисел
+        ru_emo_map = {
+         "calm": "спокойствие",
+        "anxiety": "тревога",
+        "joy": "радость",
+        "sad": "грусть",
+        "fear": "страх",
+        "surprise": "удивление",
+        "love": "любовь",
+        "anger": "злость",
+        "confusion": "замешательство",
+        "curiosity": "любопытство",
+        "nostalgia": "ностальгия",
+        "relief": "облегчение",
+        "excitement": "восторг"
+}
+
+# 🌟 Эмоции: украинский, без чисел
+emo_words: List[str] = []
+for e in (js.get("emotions") or []):
+    if isinstance(e, dict):
+        lbl = (e.get("label") or "").lower()
+    else:
+        lbl = str(e).lower()
+    if lbl:
+        emo_words.append(uk_emo_map.get(lbl, lbl))
+
+# Убираем дубли и пустые значения, fallback если пусто
+emo_line = ", ".join(dict.fromkeys([w for w in emo_words if w])) or "спокойное присутствие"
+        
+        # Теми у короткий сенсовий заголовок
+themes_ru= {    "transition": "переход",
+        "timelessness": "вне времени",
+        "flow/emotion": "поток чувств",
+        "relationships": "отношения",
+        "growth": "рост",
+        "loneliness": "одиночество",
+        "conflict": "конфликт",
+        "adventure": "приключение",
+        "mystery": "тайна",
+        "self_respect": "самоуважение",
+        "introspection": "самоанализ",
+        "fear": "страх",
+        "joy": "радость"  }
+th = []
+                
+for t in (js.get("themes") or []):
+     if isinstance(t, dict):
+        t_key = (t.get("label") or "").lower()
+     else:
+        t_key = str(t).lower()
+     if t_key:
+        th.append(themes_uk.get(t_key, t_key))
+        head_core = ", ".join(dict.fromkeys([t for t in th if t])) or "внутренний поиск"
+
+
 
         # Вплетённые интерпретации символов
         sym_words = [s if isinstance(s, str) else str(s) for s in (js.get("symbols") or [])]
@@ -1272,10 +1382,63 @@ def render_analysis_text(js: Dict[str, Any], psych: str, esoteric: str, advice: 
             (esoteric or ""),
             (f"Совет: {advice}" if advice else ""),
         ]
-    else:
+     else:
         # Soft, diary-like English rendering
         header = "Dream Analysis 🌙"
-    
+     en_emo_map = {
+        "calm": "calm",
+        "anxiety": "anxiety",
+        "joy": "joy",
+        "sad": "sadness",
+        "fear": "fear",
+        "surprise": "surprise",
+        "love": "love",
+        "anger": "anger",
+        "confusion": "confusion",
+        "curiosity": "curiosity",
+        "nostalgia": "nostalgia",
+        "relief": "relief",
+        "excitement": "excitement"
+}
+
+# 🌟 Эмоции: украинский, без чисел
+emo_words: List[str] = []
+for e in (js.get("emotions") or []):
+    if isinstance(e, dict):
+        lbl = (e.get("label") or "").lower()
+    else:
+        lbl = str(e).lower()
+    if lbl:
+        emo_words.append(uk_emo_map.get(lbl, lbl))
+
+# Убираем дубли и пустые значения, fallback если пусто
+emo_line = ", ".join(dict.fromkeys([w for w in emo_words if w])) or "calm presence"
+        
+        # Теми у короткий сенсовий заголовок
+themes_uk = { "transition": "transition",
+        "timelessness": "timelessness",
+        "flow/emotion": "flow/emotion",
+        "relationships": "relationships",
+        "growth": "growth",
+        "loneliness": "loneliness",
+        "conflict": "conflict",
+        "adventure": "adventure",
+        "mystery": "mystery",
+        "self_respect": "self-respect",
+        "introspection": "introspection",
+        "fear": "fear",
+        "joy": "joy"  }
+th = []
+                
+for t in (js.get("themes") or []):
+     if isinstance(t, dict):
+        t_key = (t.get("label") or "").lower()
+     else:
+        t_key = str(t).lower()
+     if t_key:
+        th.append(themes_uk.get(t_key, t_key))
+        head_core = ", ".join(dict.fromkeys([t for t in th if t])) or "inner search"
+
         sym_words = [s if isinstance(s, str) else str(s) for s in (js.get("symbols") or [])]
         en_symbol_map = {
             "stop": "A stop — a pause between phases. The past is near, yet fading in mist 🚏",
@@ -1307,7 +1470,7 @@ def render_analysis_text(js: Dict[str, Any], psych: str, esoteric: str, advice: 
             (esoteric or ""),
             (f"Advice: {advice}" if advice else ""),
         ]
-    return "\n".join([p for p in parts if p])
+  
 
 
 dp = Dispatcher()
