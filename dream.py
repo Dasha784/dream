@@ -677,12 +677,47 @@ def build_interpret_prompt(struct_json: str, mode: str, lang: str) -> str:
         "Include ESOTERIC only when appropriate; for simple dreams keep it short or empty."
     )
     scaling = scaling_ru if lang == "ru" else scaling_uk if lang == "uk" else scaling_en
+    # Explicit rubric to avoid templates and enforce dynamic use of dream details
+    if lang == "ru":
+        rubric = (
+            "\nПравила генерации:\n"
+            "1) Сначала классифицируй сон: Бытовой | Символический | Смешанный.\n"
+            "2) Выдели ключевые элементы: действия, объекты, места, персонажи, эмоции, символы.\n"
+            "3) Пиши в подходящем стиле (ясно/без эзотерики для бытовых; образно/мягко для символических, 1–2 эмодзи по смыслу).\n"
+            "4) Используй только реальные детали сна. Не вставляй символы/метафоры, если их не было.\n"
+            "5) Для символических: вплетай символы и эмоции в текст, не перечисляй сухими списками.\n"
+            "6) Для бытовых: опиши действия и эмоции, дай короткий практический совет.\n"
+            "7) Не повторяй один и тот же текст. Каждый ответ уникален и конкретен, с упоминанием минимум 2 деталей (объект/действие/эмоция).\n"
+        )
+    elif lang == "uk":
+        rubric = (
+            "\nПравила генерації:\n"
+            "1) Спочатку класифікуй сон: Побутовий | Символічний | Змішаний.\n"
+            "2) Виділи ключові елементи: дії, обʼєкти, місця, персонажі, емоції, символи.\n"
+            "3) Пиши у відповідному стилі (ясно/без езотерики для побутових; образно/мʼяко для символічних, 1–2 емодзі за змістом).\n"
+            "4) Використовуй лише реальні деталі сну. Не вставляй символи/метафори, якщо їх не було.\n"
+            "5) Для символічних: вплітай символи й емоції в текст, не роби сухих списків.\n"
+            "6) Для побутових: опиши дії й емоції, дай коротку практичну пораду.\n"
+            "7) Не повторюй той самий текст. Кожна відповідь унікальна й конкретна, з мінімум 2 деталями (обʼєкт/дія/емоція).\n"
+        )
+    else:
+        rubric = (
+            "\nGeneration rules:\n"
+            "1) First classify: Domestic | Symbolic | Mixed.\n"
+            "2) Extract key elements: actions, objects, places, characters, emotions, symbols.\n"
+            "3) Match the style (clear/no esoterics for domestic; soft/evocative for symbolic, 1–2 emojis).\n"
+            "4) Use only real dream details. Don’t add symbols/metaphors that weren’t there.\n"
+            "5) For symbolic: weave symbols and emotions into prose, no dry lists.\n"
+            "6) For domestic: describe actions/emotions, give a short practical advice.\n"
+            "7) Never reuse the same wording. Each answer is unique and mentions at least 2 concrete details.\n"
+        )
     return (
         f"{header}\n\n{base}\n"
         f"Mode: {mode}.\n"
         f"Structure (JSON): {struct_json}\n"
         f"{example}"
         f"{scaling}"
+        f"{rubric}"
         + (" Всегда включай все три секции (PSYCH, ESOTERIC — при уместности, ADVICE)." if lang == "ru" else (
            " Завжди включай усі три секції (PSYCH, ESOTERIC — за доречністю, ADVICE)." if lang == "uk" else
            " Always include the three sections (PSYCH, ESOTERIC — when appropriate, ADVICE)."
