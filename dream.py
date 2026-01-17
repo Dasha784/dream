@@ -744,6 +744,9 @@ async def analyze_dream(text: str, mode: str, lang: str) -> Tuple[Dict[str, Any]
         psych = bucket.get("PSYCH", "")
         esoteric = bucket.get("ESOTERIC", "")
         advice = bucket.get("ADVICE", "")
+        # Фолбэк: если модель не размечала секции, используем весь ответ как PSYCH
+        if not psych and not esoteric and not advice:
+            psych = interp_raw.strip()
 
     return js, psych, esoteric, advice
 
