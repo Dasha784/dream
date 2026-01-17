@@ -609,17 +609,20 @@ def build_struct_prompt(dream_text: str, lang: str) -> str:
 def build_style_header(lang: str) -> str:
     if lang == "uk":
         return (
-            "Ти пишеш як уважний консультант-таролог/психолог. Не згадуй ШІ. Без дисклеймерів. "
-            "Стиль: теплий, образний, але лаконічний. Короткі абзаци, без списків, якщо не просять."
+            "Пиши як інтуїтивний нічний щоденник: тепло і м'яко, без згадок про ШІ і без дисклеймерів. "
+            "Короткі абзаци з плавними переходами; символи вплітай у текст, уникай сухих списків. "
+            "Використовуй 1–2 доречні емодзі на розділ. Уяви, що читач читає це вночі, і сон ще поруч."
         )
     if lang == "ru":
         return (
-            "Ты пишешь как внимательный таролог/психолог. Не упоминай ИИ. Без дисклеймеров. "
-            "Стиль: тёплый, образный, но лаконичный. Короткие абзацы, без списков, если не просят."
+            "Пиши как интуитивный дневник ночью: тепло и мягко, без упоминаний ИИ и без дисклеймеров. "
+            "Короткие абзацы с мягкими связками; символы вплетай в текст, избегай сухих списков. "
+            "Используй 1–2 уместных эмодзи на раздел. Представь, что читатель читает это ночью, и сон ещё рядом."
         )
     return (
-        "Write like a caring tarot reader/psychologist. Do not mention AI. No disclaimers. "
-        "Tone: warm, evocative, concise. Short paragraphs, avoid lists unless asked."
+        "Write like an intuitive night diary: warm and gentle, no AI mentions, no disclaimers. "
+        "Short paragraphs with smooth transitions; weave symbols into prose, avoid dry lists. "
+        "Use 1–2 fitting emojis per section; imagine the reader at night, the dream still near."
     )
 
 
